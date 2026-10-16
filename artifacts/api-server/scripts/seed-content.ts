@@ -1,10 +1,14 @@
 import { pool } from "@workspace/db";
 
 async function seed() {
+  // Seed Coaching & Offer Banners
   await pool.query(
-    `INSERT INTO banners (title, subtitle, cta_label, href, enabled, sort_order)
-     SELECT 'Prepare with a clear plan', 'Build your SSC CGL preparation one lesson at a time.', 'Explore courses', '/courses', true, 0
-     WHERE NOT EXISTS (SELECT 1 FROM banners WHERE title = 'Prepare with a clear plan')`,
+    `INSERT INTO banners (title, subtitle, image_url, cta_label, href, enabled, sort_order)
+     VALUES
+       ('🔥 Flat 50% Off — SSC CGL Foundation Batch', 'Live Classes + Complete Notes + 50 Mock Tests Included', 'https://images.unsplash.com/photo-1434030216411-0b793f4b4173?w=1000&auto=format&fit=crop&q=80', 'Enroll Now', '/(tabs)/courses', true, 1),
+       ('🏆 All India Live Mock Test Series', 'Compete with 10,000+ aspirants · Real Exam Simulator & All India Rank', 'https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?w=1000&auto=format&fit=crop&q=80', 'Start Free Test', '/(tabs)/tests', true, 2),
+       ('📚 Free Revision Notes & Formula Booklets', 'Comprehensive study notes for GK, Reasoning & Quant shortcuts', 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=1000&auto=format&fit=crop&q=80', 'View Notes', '/(tabs)/notes', true, 3)
+     ON CONFLICT DO NOTHING`,
   );
 
   const courseResult = await pool.query<{ id: number }>(

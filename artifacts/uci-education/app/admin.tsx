@@ -60,6 +60,7 @@ export default function AdminDashboardScreen() {
 
       {/* Quick Action Buttons */}
       <View style={styles.actionRow}>
+        <ActionCard label="Offers & Banners" icon="image" color="#ec4899" onPress={() => router.push("/admin-banners")} />
         <ActionCard label="Add Course" icon="book-open" color="#6366f1" onPress={() => router.push("/admin-add-course")} />
         <ActionCard label="Add Note" icon="file-text" color="#10b981" onPress={() => router.push("/admin-add-note")} />
         <ActionCard label="Generate Test" icon="zap" color="#f59e0b" onPress={() => router.push("/admin-generate-test")} />

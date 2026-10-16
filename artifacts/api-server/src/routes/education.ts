@@ -762,6 +762,65 @@ adminRouter.post("/notes", async (req, res) => {
   }
 });
 
+// Admin: Get all banners
+adminRouter.get("/banners", async (_req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, title, subtitle, image_url AS "imageUrl", cta_label AS "ctaLabel",
+              href, enabled, sort_order AS "sortOrder", created_at AS "createdAt"
+       FROM banners ORDER BY sort_order, id DESC`,
+    );
+    res.json({ banners: result.rows });
+  } catch (error) {
+    sendServerError(res, error);
+  }
+});
+
+// Admin: Create banner
+adminRouter.post("/banners", async (req, res) => {
+  const title = typeof req.body?.title === "string" ? req.body.title.trim() : "";
+  const subtitle = typeof req.body?.subtitle === "string" ? req.body.subtitle.trim() : "";
+  const imageUrl = typeof req.body?.imageUrl === "string" ? req.body.imageUrl.trim() : "";
+  const ctaLabel = typeof req.body?.ctaLabel === "string" ? req.body.ctaLabel.trim() : "Explore";
+  const href = typeof req.body?.href === "string" ? req.body.href.trim() : "/(tabs)/courses";
+  const sortOrder = Number.isInteger(req.body?.sortOrder) ? req.body.sortOrder : 0;
+
+  if (!title) {
+    res.status(422).json({ message: "Banner title is required." });
+    return;
+  }
+  try {
+    const result = await pool.query<{ id: number }>(
+      `INSERT INTO banners (title, subtitle, image_url, cta_label, href, enabled, sort_order)
+       VALUES ($1, $2, $3, $4, $5, true, $6)
+       RETURNING id, title, subtitle, image_url AS "imageUrl", cta_label AS "ctaLabel", href, enabled, sort_order AS "sortOrder"`,
+      [title, subtitle, imageUrl, ctaLabel || "Explore", href || "/(tabs)/courses", sortOrder],
+    );
+    res.status(201).json({ banner: result.rows[0] });
+  } catch (error) {
+    sendServerError(res, error);
+  }
+});
+
+// Admin: Delete banner
+adminRouter.delete("/banners/:id", async (req, res) => {
+  const bannerId = Number(req.params.id);
+  if (!Number.isInteger(bannerId) || bannerId < 1) {
+    res.status(400).json({ message: "Invalid banner ID." });
+    return;
+  }
+  try {
+    const result = await pool.query(`DELETE FROM banners WHERE id = $1 RETURNING id`, [bannerId]);
+    if (result.rowCount === 0) {
+      res.status(404).json({ message: "Banner not found." });
+      return;
+    }
+    res.json({ message: "Banner deleted successfully.", id: bannerId });
+  } catch (error) {
+    sendServerError(res, error);
+  }
+});
+
 router.use("/admin", adminRouter);
 
 export default router;

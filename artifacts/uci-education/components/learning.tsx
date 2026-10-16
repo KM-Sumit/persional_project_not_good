@@ -33,40 +33,81 @@ export function Page({ children }: React.PropsWithChildren) {
 }
 
 export function BrandHeader({
+  onSearch,
+  onNotification,
+  onProfile,
   greeting,
   name,
-  onProfile,
+  notifCount,
 }: {
+  onSearch?: () => void;
+  onNotification?: () => void;
+  onProfile?: () => void;
   greeting?: string;
   name?: string;
-  onProfile?: () => void;
+  notifCount?: number;
 }) {
   const colors = useColors();
   return (
     <View style={styles.header}>
+      {/* Logo mark */}
       <View style={[styles.brandMark, { backgroundColor: colors.foreground }]}>
         <Ionicons name="book-outline" size={19} color={colors.primaryForeground} />
       </View>
+
+      {/* Title: UCI सारथी + sub-tagline */}
       <View style={{ flex: 1 }}>
-        {greeting ? (
-          <Text style={[styles.greeting, { color: colors.mutedForeground }]}>{greeting}</Text>
-        ) : null}
         <Text style={[styles.brand, { color: colors.foreground }]}>
-          UCI<Text style={{ color: colors.primary }}>.</Text>
+          UCI{" "}
+          <Text style={{ color: colors.primary }}>सारथी</Text>
         </Text>
-        {name ? <Text style={[styles.subGreeting, { color: colors.foreground }]}>{name}</Text> : null}
+        <Text style={[styles.brandTagline, { color: colors.mutedForeground }]}>
+          आपकी सफलता का साथी
+        </Text>
       </View>
-      {onProfile ? (
+
+      {/* Search icon */}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Search"
+        testID="home-search-button"
+        onPress={onSearch}
+        style={[styles.iconButton, { backgroundColor: colors.secondary }]}
+      >
+        <Feather name="search" size={19} color={colors.foreground} />
+      </Pressable>
+
+      {/* Notification icon with count badge */}
+      <View style={{ position: "relative" }}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Open profile"
-          testID="home-profile-button"
-          onPress={onProfile}
-          style={[styles.profileButton, { backgroundColor: colors.secondary }]}
+          accessibilityLabel="Notifications"
+          testID="home-notification-button"
+          onPress={onNotification}
+          style={[styles.iconButton, { backgroundColor: colors.secondary }]}
         >
-          <Feather name="user" size={19} color={colors.foreground} />
+          <Feather name="bell" size={19} color={colors.foreground} />
         </Pressable>
-      ) : null}
+        {/* Count badge */}
+        {notifCount && notifCount > 0 ? (
+          <View style={[styles.notifBadge, { backgroundColor: colors.primary }]}>
+            <Text style={styles.notifBadgeText}>{notifCount > 9 ? "9+" : notifCount}</Text>
+          </View>
+        ) : (
+          <View style={[styles.notifDot, { backgroundColor: colors.primary }]} />
+        )}
+      </View>
+
+      {/* Profile Avatar */}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Profile"
+        testID="home-profile-button"
+        onPress={onProfile}
+        style={styles.avatarCircle}
+      >
+        <Ionicons name="person" size={17} color="#fff" />
+      </Pressable>
     </View>
   );
 }
@@ -155,18 +196,32 @@ export function ProgressBar({ value }: { value: number }) {
 }
 
 const styles = StyleSheet.create({
-  header: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 22 },
+  header: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 22 },
   brandMark: {
-    width: 40,
-    height: 40,
+    width: 42,
+    height: 42,
     borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
   },
-  greeting: { fontSize: 12, fontWeight: "600", marginBottom: 1 },
-  brand: { fontSize: 19, fontWeight: "800", letterSpacing: 0.4 },
-  subGreeting: { fontSize: 13, fontWeight: "600", marginTop: 1 },
-  profileButton: { width: 42, height: 42, borderRadius: 15, justifyContent: "center", alignItems: "center" },
+  brand: { fontSize: 20, fontWeight: "800", letterSpacing: 0.2 },
+  brandTagline: { fontSize: 11, fontWeight: "500", marginTop: 1, letterSpacing: 0.1 },
+  iconButton: { width: 42, height: 42, borderRadius: 15, justifyContent: "center", alignItems: "center" },
+  notifDot: { position: "absolute", top: 8, right: 8, width: 8, height: 8, borderRadius: 4, borderWidth: 1.5, borderColor: "#fff" },
+  notifBadge: {
+    position: "absolute", top: 3, right: 3,
+    minWidth: 17, height: 17, borderRadius: 9,
+    alignItems: "center", justifyContent: "center",
+    borderWidth: 1.5, borderColor: "#fff",
+    paddingHorizontal: 3,
+  },
+  notifBadgeText: { color: "#fff", fontSize: 9, fontWeight: "800" },
+  avatarCircle: {
+    width: 38, height: 38, borderRadius: 19,
+    backgroundColor: "#D97706",
+    alignItems: "center", justifyContent: "center",
+    overflow: "hidden",
+  },
   sectionTitle: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12, marginTop: 24 },
   sectionHeading: { fontSize: 19, fontWeight: "700", letterSpacing: -0.3 },
   actionText: { fontSize: 13, fontWeight: "700" },
