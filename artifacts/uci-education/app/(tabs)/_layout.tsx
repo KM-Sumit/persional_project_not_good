@@ -101,8 +101,8 @@ function ClassicTabLayout() {
       <Tabs.Screen
         name="notes"
         options={{
-          title: 'Job',
-          tabBarIcon: ({ color }) => isIOS ? <SymbolView name="briefcase" tintColor={color} size={23} /> : <Feather name="briefcase" size={21} color={color} />,
+          title: 'Notes',
+          tabBarIcon: ({ color }) => isIOS ? <SymbolView name="doc.text" tintColor={color} size={23} /> : <Feather name="file-text" size={21} color={color} />,
         }}
       />
       <Tabs.Screen

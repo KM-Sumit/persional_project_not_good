@@ -241,6 +241,7 @@ export default function HomeScreen() {
           <AdminCard label="Add Course" icon="book-open" color="#6366f1" onPress={() => router.push("/admin-add-course")} />
           <AdminCard label="Add Note" icon="file-text" color="#10b981" onPress={() => router.push("/admin-add-note")} />
           <AdminCard label="Generate Test" icon="zap" color="#f59e0b" onPress={() => router.push("/admin-generate-test")} />
+          <AdminCard label="Manage Notes" icon="folder" color="#2563EB" onPress={() => router.push("/admin-notes")} />
         </View>
 
         {dashQ.isLoading ? <LoadingState label="Loading stats…" /> : null}
@@ -380,13 +381,13 @@ export default function HomeScreen() {
           <SectionHeader title="Quick Access" count={undefined} accent="#D97706" />
           <View style={styles.quickGrid}>
             <QuickTile label="Courses" desc="Learn from recorded lectures" icon="book-open" bg="#FFF4EA" iconBg="#FFE0C2" iconColor="#D97706"
-              onPress={() => scrollTo("courses")} />
-            <QuickTile label="Live Class" desc="Join live interactive classes" icon="video" bg="#EDFDF4" iconBg="#BBF7D0" iconColor="#16A34A"
               onPress={() => router.navigate("/(tabs)/courses")} />
-            <QuickTile label="Test" desc="Mock tests & practice sets" icon="check-square" bg="#FFF1F2" iconBg="#FECDD3" iconColor="#DC2626"
-              onPress={() => scrollTo("tests")} />
-            <QuickTile label="Job Update" desc="Latest job alerts & opportunities" icon="briefcase" bg="#F3F0FF" iconBg="#DDD6FE" iconColor="#7C3AED"
+            <QuickTile label="Notes" desc="PDF notes & study material" icon="file-text" bg="#EFF6FF" iconBg="#BFDBFE" iconColor="#2563EB"
               onPress={() => router.navigate("/(tabs)/notes")} />
+            <QuickTile label="Tests" desc="Mock tests & practice sets" icon="check-square" bg="#FFF1F2" iconBg="#FECDD3" iconColor="#DC2626"
+              onPress={() => router.navigate("/(tabs)/tests")} />
+            <QuickTile label="Job Update" desc="Latest job alerts & opportunities" icon="briefcase" bg="#F3F0FF" iconBg="#DDD6FE" iconColor="#7C3AED"
+              onPress={() => router.navigate("/(tabs)/profile")} />
             <QuickTile label="Support" desc="Get help & contact us" icon="headphones" bg="#FFFBEB" iconBg="#FDE68A" iconColor="#B45309"
               onPress={() => router.navigate("/(tabs)/profile")} />
             <QuickTile label="My Progress" desc="Track your learning journey" icon="trending-up" bg="#F0FFF4" iconBg="#BBF7D0" iconColor="#059669"
@@ -395,100 +396,6 @@ export default function HomeScreen() {
         </View>
       ) : null}
 
-      {/* ── COURSES SECTION ── */}
-      <View onLayout={(e) => { sectionY.current["courses"] = e.nativeEvent.layout.y; }}>
-        <SectionHeader
-          title={isSearching ? `"${search}" ke results` : "Courses"}
-          count={filteredCourses.length}
-          accent="#D97706"
-        />
-        {homeQ.isLoading ? <LoadingState label="Courses load ho rahe hain…" /> : null}
-        {filteredCourses.length > 0
-          ? filteredCourses.map((c) => (
-              <CourseCard key={c.id} course={c} onPress={() => openCourse(c.id)} />
-            ))
-          : !homeQ.isLoading
-          ? <EmptyState
-              title={isSearching ? "Koi course nahi mila" : "Abhi koi course nahi"}
-              description={isSearching ? `"${search}" se koi match nahi.` : "Courses jald hi add honge."}
-            />
-          : null}
-      </View>
-
-      {/* ── CONTINUE LEARNING (hidden while searching) ── */}
-      {!isSearching && courses.length > 0 ? (
-        <View style={{ marginBottom: 8 }}>
-          <View style={styles.sectionHeader}>
-            <View style={[styles.sectionAccent, { backgroundColor: "#D97706" }]} />
-            <Text style={styles.sectionTitle}>Continue Learning</Text>
-            <Pressable onPress={() => scrollTo("courses")} style={{ marginLeft: "auto" }}>
-              <Text style={styles.seeAll}>See All →</Text>
-            </Pressable>
-          </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -16 }} contentContainerStyle={{ paddingHorizontal: 16, gap: 12 }}>
-            {courses.slice(0, 5).map((c, i) => (
-              <Pressable key={c.id} onPress={() => openCourse(c.id)}
-                style={({ pressed }) => [styles.continueCard, { opacity: pressed ? 0.9 : 1 }]}>
-                <View style={styles.continueCover}>
-                  {c.thumbnailUrl
-                    ? <Image source={{ uri: c.thumbnailUrl }} style={StyleSheet.absoluteFill} resizeMode="cover" />
-                    : <View style={[StyleSheet.absoluteFill, { backgroundColor: i % 2 === 0 ? "#1e293b" : "#0f2027", justifyContent: "center", alignItems: "center" }]}>
-                        <Text style={{ fontSize: 32 }}>📚</Text>
-                      </View>}
-                  <View style={styles.durationBadge}><Text style={styles.durationText}>{c.lessonCount > 0 ? `${c.lessonCount * 12}:00` : "18:20"}</Text></View>
-                  <View style={styles.playCircle}><Feather name="play" size={18} color="#fff" /></View>
-                </View>
-                <View style={styles.continueMeta}>
-                  <View style={[styles.examTag2, { backgroundColor: "#D97706" + "18" }]}>
-                    <Text style={[styles.examTagTxt2, { color: "#D97706" }]}>{c.exam}</Text>
-                  </View>
-                  <Text numberOfLines={2} style={styles.continueTitle}>{c.title}</Text>
-                  <Text style={styles.continueSub}>{c.instructor} · Lecture {i + 1}</Text>
-                  <View style={styles.progressRow}>
-                    <View style={[styles.progressTrackSm, { backgroundColor: "#e2e8f0" }]}>
-                      <View style={[styles.progressFillSm, { width: `${Math.max(10, (i + 1) * 15)}%`, backgroundColor: "#D97706" }]} />
-                    </View>
-                    <Text style={styles.progressPct}>{Math.max(10, (i + 1) * 15)}%</Text>
-                  </View>
-                  <View style={styles.continueFooter}>
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                      <Feather name="clock" size={11} color="#64748b" />
-                      <Text style={styles.timeLeft}>{12 - i} min left</Text>
-                    </View>
-                    <Pressable onPress={() => openCourse(c.id)} style={styles.continueBtn}>
-                      <Text style={styles.continueBtnTxt}>Continue</Text>
-                    </Pressable>
-                  </View>
-                </View>
-              </Pressable>
-            ))}
-          </ScrollView>
-        </View>
-      ) : null}
-
-      {/* ── NOTES SECTION (hidden while searching) ── */}
-      {!isSearching ? (
-        <View onLayout={(e) => { sectionY.current["notes"] = e.nativeEvent.layout.y; }}>
-          <SectionHeader title="Notes" count={notes.length} accent="#2563EB" />
-          {notes.length > 0
-            ? notes.map((n) => <NoteCard key={n.id} note={n} onPress={() => openNote(n.id)} />)
-            : !homeQ.isLoading
-            ? <EmptyState title="Notes abhi nahi hain" description="Study notes jald add honge." />
-            : null}
-        </View>
-      ) : null}
-
-      {/* ── TESTS SECTION (hidden while searching) ── */}
-      {!isSearching ? (
-        <View onLayout={(e) => { sectionY.current["tests"] = e.nativeEvent.layout.y; }}>
-          <SectionHeader title="Tests" count={tests.length} accent="#DC2626" />
-          {tests.length > 0
-            ? tests.map((t) => <TestCard key={t.id} test={t} onPress={() => openTest(t.id)} />)
-            : !homeQ.isLoading
-            ? <EmptyState title="Koi test nahi" description="Practice tests jald available honge." />
-            : null}
-        </View>
-      ) : null}
     </ScrollView>
   );
 }

@@ -262,3 +262,96 @@ export const testAnswers = pgTable(
     ),
   ],
 );
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NOTES HIERARCHY: exam_sections → exams → exam_subjects → exam_notes
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const examSections = pgTable(
+  "exam_sections",
+  {
+    id: serial("id").primaryKey(),
+    name: text("name").notNull(),
+    slug: text("slug").notNull(),
+    description: text("description").notNull().default(""),
+    icon: text("icon").notNull().default("📚"),
+    displayOrder: integer("display_order").notNull().default(0),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex("exam_sections_slug_unique").on(table.slug),
+    index("exam_sections_active_order_idx").on(table.isActive, table.displayOrder),
+  ],
+);
+
+export const exams = pgTable(
+  "exams",
+  {
+    id: serial("id").primaryKey(),
+    sectionId: integer("section_id")
+      .notNull()
+      .references(() => examSections.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    slug: text("slug").notNull(),
+    description: text("description").notNull().default(""),
+    icon: text("icon").notNull().default("📝"),
+    displayOrder: integer("display_order").notNull().default(0),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex("exams_section_slug_unique").on(table.sectionId, table.slug),
+    index("exams_section_active_order_idx").on(table.sectionId, table.isActive, table.displayOrder),
+  ],
+);
+
+export const examSubjects = pgTable(
+  "exam_subjects",
+  {
+    id: serial("id").primaryKey(),
+    examId: integer("exam_id")
+      .notNull()
+      .references(() => exams.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    slug: text("slug").notNull(),
+    description: text("description").notNull().default(""),
+    displayOrder: integer("display_order").notNull().default(0),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex("exam_subjects_exam_slug_unique").on(table.examId, table.slug),
+    index("exam_subjects_exam_active_order_idx").on(table.examId, table.isActive, table.displayOrder),
+  ],
+);
+
+export const examNotes = pgTable(
+  "exam_notes",
+  {
+    id: serial("id").primaryKey(),
+    examId: integer("exam_id")
+      .notNull()
+      .references(() => exams.id, { onDelete: "cascade" }),
+    subjectId: integer("subject_id").references(() => examSubjects.id, { onDelete: "set null" }),
+    title: text("title").notNull(),
+    description: text("description").notNull().default(""),
+    pdfUrl: text("pdf_url").notNull().default(""),
+    thumbnailUrl: text("thumbnail_url").notNull().default(""),
+    fileSize: integer("file_size"),
+    mimeType: text("mime_type").notNull().default("application/pdf"),
+    tags: text("tags").notNull().default(""),
+    displayOrder: integer("display_order").notNull().default(0),
+    isPublished: boolean("is_published").notNull().default(false),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    index("exam_notes_exam_published_idx").on(table.examId, table.isPublished),
+    index("exam_notes_subject_idx").on(table.subjectId),
+  ],
+);

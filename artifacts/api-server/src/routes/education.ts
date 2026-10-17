@@ -821,6 +821,366 @@ adminRouter.delete("/banners/:id", async (req, res) => {
   }
 });
 
+// ── NOTES HIERARCHY — Student endpoints ──────────────────────────────────────
+
+router.get("/notes/sections", requireAuth, async (_req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT id, name, slug, description, icon, display_order AS "displayOrder",
+              (SELECT COUNT(*)::int FROM exams WHERE section_id = es.id AND is_active = true) AS "examCount"
+       FROM exam_sections es WHERE is_active = true ORDER BY display_order, id`,
+    );
+    res.json({ sections: r.rows });
+  } catch (e) { sendServerError(res, e); }
+});
+
+router.get("/notes/sections/:sectionId/exams", requireAuth, async (req, res) => {
+  const sectionId = Number(req.params.sectionId);
+  if (!Number.isInteger(sectionId) || sectionId < 1) { res.status(400).json({ message: "Invalid section." }); return; }
+  try {
+    const r = await pool.query(
+      `SELECT e.id, e.name, e.slug, e.description, e.icon, e.display_order AS "displayOrder",
+              (SELECT COUNT(*)::int FROM exam_subjects WHERE exam_id = e.id AND is_active = true) AS "subjectCount",
+              (SELECT COUNT(*)::int FROM exam_notes WHERE exam_id = e.id AND is_published = true) AS "noteCount"
+       FROM exams e WHERE e.section_id = $1 AND e.is_active = true ORDER BY e.display_order, e.id`,
+      [sectionId],
+    );
+    res.json({ exams: r.rows });
+  } catch (e) { sendServerError(res, e); }
+});
+
+router.get("/notes/exams/:examId/subjects", requireAuth, async (req, res) => {
+  const examId = Number(req.params.examId);
+  if (!Number.isInteger(examId) || examId < 1) { res.status(400).json({ message: "Invalid exam." }); return; }
+  try {
+    const r = await pool.query(
+      `SELECT s.id, s.name, s.slug, s.description, s.display_order AS "displayOrder",
+              (SELECT COUNT(*)::int FROM exam_notes WHERE subject_id = s.id AND is_published = true) AS "noteCount"
+       FROM exam_subjects s WHERE s.exam_id = $1 AND s.is_active = true ORDER BY s.display_order, s.id`,
+      [examId],
+    );
+    res.json({ subjects: r.rows });
+  } catch (e) { sendServerError(res, e); }
+});
+
+router.get("/notes/exams/:examId/notes", requireAuth, async (req, res) => {
+  const examId = Number(req.params.examId);
+  if (!Number.isInteger(examId) || examId < 1) { res.status(400).json({ message: "Invalid exam." }); return; }
+  const subjectId = req.query.subjectId ? Number(req.query.subjectId) : null;
+  try {
+    const r = await pool.query(
+      `SELECT n.id, n.title, n.description, n.pdf_url AS "pdfUrl", n.thumbnail_url AS "thumbnailUrl",
+              n.file_size AS "fileSize", n.tags, n.display_order AS "displayOrder",
+              n.published_at AS "publishedAt", s.name AS "subjectName"
+       FROM exam_notes n
+       LEFT JOIN exam_subjects s ON s.id = n.subject_id
+       WHERE n.exam_id = $1 AND n.is_published = true
+         AND ($2::int IS NULL OR n.subject_id = $2)
+       ORDER BY n.display_order, n.published_at DESC`,
+      [examId, subjectId],
+    );
+    res.json({ notes: r.rows });
+  } catch (e) { sendServerError(res, e); }
+});
+
+router.get("/notes/exam-note/:id", requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id < 1) { res.status(400).json({ message: "Invalid note." }); return; }
+  try {
+    const r = await pool.query(
+      `SELECT n.id, n.title, n.description, n.pdf_url AS "pdfUrl", n.thumbnail_url AS "thumbnailUrl",
+              n.file_size AS "fileSize", n.tags, n.published_at AS "publishedAt",
+              s.name AS "subjectName", e.name AS "examName", es.name AS "sectionName"
+       FROM exam_notes n
+       JOIN exams e ON e.id = n.exam_id
+       JOIN exam_sections es ON es.id = e.section_id
+       LEFT JOIN exam_subjects s ON s.id = n.subject_id
+       WHERE n.id = $1 AND n.is_published = true`,
+      [id],
+    );
+    if (!r.rows[0]) { res.status(404).json({ message: "Note not found." }); return; }
+    res.json({ note: r.rows[0] });
+  } catch (e) { sendServerError(res, e); }
+});
+
+// ── NOTES HIERARCHY — Admin endpoints ────────────────────────────────────────
+
+// One-time migration endpoint
+adminRouter.post("/migrate-notes", async (_req, res) => {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS exam_sections (id SERIAL PRIMARY KEY, name TEXT NOT NULL, slug TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', icon TEXT NOT NULL DEFAULT '📚', display_order INTEGER NOT NULL DEFAULT 0, is_active BOOLEAN NOT NULL DEFAULT true, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+      CREATE UNIQUE INDEX IF NOT EXISTS exam_sections_slug_unique ON exam_sections(slug);
+      CREATE TABLE IF NOT EXISTS exams (id SERIAL PRIMARY KEY, section_id INTEGER NOT NULL REFERENCES exam_sections(id) ON DELETE CASCADE, name TEXT NOT NULL, slug TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', icon TEXT NOT NULL DEFAULT '📝', display_order INTEGER NOT NULL DEFAULT 0, is_active BOOLEAN NOT NULL DEFAULT true, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+      CREATE UNIQUE INDEX IF NOT EXISTS exams_section_slug_unique ON exams(section_id, slug);
+      CREATE TABLE IF NOT EXISTS exam_subjects (id SERIAL PRIMARY KEY, exam_id INTEGER NOT NULL REFERENCES exams(id) ON DELETE CASCADE, name TEXT NOT NULL, slug TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', display_order INTEGER NOT NULL DEFAULT 0, is_active BOOLEAN NOT NULL DEFAULT true, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+      CREATE UNIQUE INDEX IF NOT EXISTS exam_subjects_exam_slug_unique ON exam_subjects(exam_id, slug);
+      CREATE TABLE IF NOT EXISTS exam_notes (id SERIAL PRIMARY KEY, exam_id INTEGER NOT NULL REFERENCES exams(id) ON DELETE CASCADE, subject_id INTEGER REFERENCES exam_subjects(id) ON DELETE SET NULL, title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', pdf_url TEXT NOT NULL DEFAULT '', thumbnail_url TEXT NOT NULL DEFAULT '', file_size INTEGER, mime_type TEXT NOT NULL DEFAULT 'application/pdf', tags TEXT NOT NULL DEFAULT '', display_order INTEGER NOT NULL DEFAULT 0, is_published BOOLEAN NOT NULL DEFAULT false, published_at TIMESTAMPTZ, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+      CREATE INDEX IF NOT EXISTS exam_notes_exam_published_idx ON exam_notes(exam_id, is_published);
+      CREATE INDEX IF NOT EXISTS exam_notes_subject_idx ON exam_notes(subject_id);
+    `);
+    res.json({ message: "✅ Notes tables created successfully." });
+  } catch (e) { sendServerError(res, e); }
+});
+
+// Sections CRUD
+adminRouter.get("/notes/sections", async (_req, res) => {
+  try {
+    const r = await pool.query(`SELECT id, name, slug, description, icon, display_order AS "displayOrder", is_active AS "isActive", created_at AS "createdAt" FROM exam_sections ORDER BY display_order, id`);
+    res.json({ sections: r.rows });
+  } catch (e) { sendServerError(res, e); }
+});
+
+adminRouter.post("/notes/sections", async (req, res) => {
+  const name = String(req.body?.name ?? "").trim();
+  const slug = String(req.body?.slug ?? "").trim().toLowerCase().replace(/\s+/g, "-") || name.toLowerCase().replace(/\s+/g, "-");
+  const description = String(req.body?.description ?? "").trim();
+  const icon = String(req.body?.icon ?? "📚").trim();
+  const displayOrder = Number.isInteger(req.body?.displayOrder) ? req.body.displayOrder : 0;
+  if (!name) { res.status(422).json({ message: "Section name is required." }); return; }
+  try {
+    const r = await pool.query<{ id: number }>(
+      `INSERT INTO exam_sections (name, slug, description, icon, display_order) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+      [name, slug, description, icon, displayOrder],
+    );
+    res.status(201).json({ id: r.rows[0]!.id, name });
+  } catch (e: any) {
+    if (e.code === "23505") { res.status(409).json({ message: "A section with that slug already exists." }); return; }
+    sendServerError(res, e);
+  }
+});
+
+adminRouter.patch("/notes/sections/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id < 1) { res.status(400).json({ message: "Invalid section." }); return; }
+  const fields: string[] = []; const vals: unknown[] = [];
+  if (req.body?.name) { fields.push(`name = $${vals.push(String(req.body.name).trim())}`); }
+  if (req.body?.description !== undefined) { fields.push(`description = $${vals.push(String(req.body.description).trim())}`); }
+  if (req.body?.icon) { fields.push(`icon = $${vals.push(String(req.body.icon).trim())}`); }
+  if (req.body?.displayOrder !== undefined) { fields.push(`display_order = $${vals.push(Number(req.body.displayOrder))}`); }
+  if (req.body?.isActive !== undefined) { fields.push(`is_active = $${vals.push(Boolean(req.body.isActive))}`); }
+  if (!fields.length) { res.status(422).json({ message: "Nothing to update." }); return; }
+  fields.push(`updated_at = NOW()`);
+  try {
+    const r = await pool.query(`UPDATE exam_sections SET ${fields.join(", ")} WHERE id = $${vals.push(id)} RETURNING id`, vals);
+    if (!r.rowCount) { res.status(404).json({ message: "Section not found." }); return; }
+    res.json({ updated: true });
+  } catch (e) { sendServerError(res, e); }
+});
+
+adminRouter.delete("/notes/sections/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id < 1) { res.status(400).json({ message: "Invalid section." }); return; }
+  try {
+    const r = await pool.query(`DELETE FROM exam_sections WHERE id = $1 RETURNING id`, [id]);
+    if (!r.rowCount) { res.status(404).json({ message: "Section not found." }); return; }
+    res.json({ deleted: true });
+  } catch (e) { sendServerError(res, e); }
+});
+
+// Exams CRUD
+adminRouter.get("/notes/exams", async (req, res) => {
+  const sectionId = req.query.sectionId ? Number(req.query.sectionId) : null;
+  try {
+    const r = await pool.query(
+      `SELECT e.id, e.section_id AS "sectionId", es.name AS "sectionName", e.name, e.slug, e.description, e.icon, e.display_order AS "displayOrder", e.is_active AS "isActive"
+       FROM exams e JOIN exam_sections es ON es.id = e.section_id
+       WHERE ($1::int IS NULL OR e.section_id = $1) ORDER BY e.display_order, e.id`,
+      [sectionId],
+    );
+    res.json({ exams: r.rows });
+  } catch (e) { sendServerError(res, e); }
+});
+
+adminRouter.post("/notes/exams", async (req, res) => {
+  const sectionId = Number(req.body?.sectionId);
+  const name = String(req.body?.name ?? "").trim();
+  const slug = String(req.body?.slug ?? "").trim().toLowerCase().replace(/\s+/g, "-") || name.toLowerCase().replace(/\s+/g, "-");
+  const description = String(req.body?.description ?? "").trim();
+  const icon = String(req.body?.icon ?? "📝").trim();
+  const displayOrder = Number.isInteger(req.body?.displayOrder) ? req.body.displayOrder : 0;
+  if (!sectionId || !name) { res.status(422).json({ message: "Section and exam name are required." }); return; }
+  try {
+    const r = await pool.query<{ id: number }>(
+      `INSERT INTO exams (section_id, name, slug, description, icon, display_order) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+      [sectionId, name, slug, description, icon, displayOrder],
+    );
+    res.status(201).json({ id: r.rows[0]!.id, name });
+  } catch (e: any) {
+    if (e.code === "23505") { res.status(409).json({ message: "An exam with that slug already exists in this section." }); return; }
+    if (e.code === "23503") { res.status(404).json({ message: "Section not found." }); return; }
+    sendServerError(res, e);
+  }
+});
+
+adminRouter.patch("/notes/exams/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id < 1) { res.status(400).json({ message: "Invalid exam." }); return; }
+  const fields: string[] = []; const vals: unknown[] = [];
+  if (req.body?.name) { fields.push(`name = $${vals.push(String(req.body.name).trim())}`); }
+  if (req.body?.description !== undefined) { fields.push(`description = $${vals.push(String(req.body.description).trim())}`); }
+  if (req.body?.icon) { fields.push(`icon = $${vals.push(String(req.body.icon).trim())}`); }
+  if (req.body?.displayOrder !== undefined) { fields.push(`display_order = $${vals.push(Number(req.body.displayOrder))}`); }
+  if (req.body?.isActive !== undefined) { fields.push(`is_active = $${vals.push(Boolean(req.body.isActive))}`); }
+  if (!fields.length) { res.status(422).json({ message: "Nothing to update." }); return; }
+  fields.push(`updated_at = NOW()`);
+  try {
+    const r = await pool.query(`UPDATE exams SET ${fields.join(", ")} WHERE id = $${vals.push(id)} RETURNING id`, vals);
+    if (!r.rowCount) { res.status(404).json({ message: "Exam not found." }); return; }
+    res.json({ updated: true });
+  } catch (e) { sendServerError(res, e); }
+});
+
+adminRouter.delete("/notes/exams/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id < 1) { res.status(400).json({ message: "Invalid exam." }); return; }
+  try {
+    const r = await pool.query(`DELETE FROM exams WHERE id = $1 RETURNING id`, [id]);
+    if (!r.rowCount) { res.status(404).json({ message: "Exam not found." }); return; }
+    res.json({ deleted: true });
+  } catch (e) { sendServerError(res, e); }
+});
+
+// Subjects CRUD
+adminRouter.get("/notes/subjects", async (req, res) => {
+  const examId = req.query.examId ? Number(req.query.examId) : null;
+  try {
+    const r = await pool.query(
+      `SELECT s.id, s.exam_id AS "examId", e.name AS "examName", s.name, s.slug, s.description, s.display_order AS "displayOrder", s.is_active AS "isActive"
+       FROM exam_subjects s JOIN exams e ON e.id = s.exam_id
+       WHERE ($1::int IS NULL OR s.exam_id = $1) ORDER BY s.display_order, s.id`,
+      [examId],
+    );
+    res.json({ subjects: r.rows });
+  } catch (e) { sendServerError(res, e); }
+});
+
+adminRouter.post("/notes/subjects", async (req, res) => {
+  const examId = Number(req.body?.examId);
+  const name = String(req.body?.name ?? "").trim();
+  const slug = String(req.body?.slug ?? "").trim().toLowerCase().replace(/\s+/g, "-") || name.toLowerCase().replace(/\s+/g, "-");
+  const description = String(req.body?.description ?? "").trim();
+  const displayOrder = Number.isInteger(req.body?.displayOrder) ? req.body.displayOrder : 0;
+  if (!examId || !name) { res.status(422).json({ message: "Exam and subject name are required." }); return; }
+  try {
+    const r = await pool.query<{ id: number }>(
+      `INSERT INTO exam_subjects (exam_id, name, slug, description, display_order) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+      [examId, name, slug, description, displayOrder],
+    );
+    res.status(201).json({ id: r.rows[0]!.id, name });
+  } catch (e: any) {
+    if (e.code === "23505") { res.status(409).json({ message: "A subject with that slug already exists in this exam." }); return; }
+    if (e.code === "23503") { res.status(404).json({ message: "Exam not found." }); return; }
+    sendServerError(res, e);
+  }
+});
+
+adminRouter.patch("/notes/subjects/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id < 1) { res.status(400).json({ message: "Invalid subject." }); return; }
+  const fields: string[] = []; const vals: unknown[] = [];
+  if (req.body?.name) { fields.push(`name = $${vals.push(String(req.body.name).trim())}`); }
+  if (req.body?.description !== undefined) { fields.push(`description = $${vals.push(String(req.body.description).trim())}`); }
+  if (req.body?.displayOrder !== undefined) { fields.push(`display_order = $${vals.push(Number(req.body.displayOrder))}`); }
+  if (req.body?.isActive !== undefined) { fields.push(`is_active = $${vals.push(Boolean(req.body.isActive))}`); }
+  if (!fields.length) { res.status(422).json({ message: "Nothing to update." }); return; }
+  fields.push(`updated_at = NOW()`);
+  try {
+    const r = await pool.query(`UPDATE exam_subjects SET ${fields.join(", ")} WHERE id = $${vals.push(id)} RETURNING id`, vals);
+    if (!r.rowCount) { res.status(404).json({ message: "Subject not found." }); return; }
+    res.json({ updated: true });
+  } catch (e) { sendServerError(res, e); }
+});
+
+adminRouter.delete("/notes/subjects/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id < 1) { res.status(400).json({ message: "Invalid subject." }); return; }
+  try {
+    const r = await pool.query(`DELETE FROM exam_subjects WHERE id = $1 RETURNING id`, [id]);
+    if (!r.rowCount) { res.status(404).json({ message: "Subject not found." }); return; }
+    res.json({ deleted: true });
+  } catch (e) { sendServerError(res, e); }
+});
+
+// Exam Notes CRUD
+adminRouter.get("/notes/exam-notes", async (req, res) => {
+  const examId = req.query.examId ? Number(req.query.examId) : null;
+  const subjectId = req.query.subjectId ? Number(req.query.subjectId) : null;
+  try {
+    const r = await pool.query(
+      `SELECT n.id, n.exam_id AS "examId", e.name AS "examName", n.subject_id AS "subjectId", s.name AS "subjectName",
+              n.title, n.description, n.pdf_url AS "pdfUrl", n.thumbnail_url AS "thumbnailUrl",
+              n.file_size AS "fileSize", n.tags, n.display_order AS "displayOrder",
+              n.is_published AS "isPublished", n.published_at AS "publishedAt", n.created_at AS "createdAt"
+       FROM exam_notes n JOIN exams e ON e.id = n.exam_id LEFT JOIN exam_subjects s ON s.id = n.subject_id
+       WHERE ($1::int IS NULL OR n.exam_id = $1) AND ($2::int IS NULL OR n.subject_id = $2)
+       ORDER BY n.display_order, n.created_at DESC`,
+      [examId, subjectId],
+    );
+    res.json({ notes: r.rows });
+  } catch (e) { sendServerError(res, e); }
+});
+
+adminRouter.post("/notes/exam-notes", async (req, res) => {
+  const examId = Number(req.body?.examId);
+  const subjectId = req.body?.subjectId ? Number(req.body.subjectId) : null;
+  const title = String(req.body?.title ?? "").trim();
+  const description = String(req.body?.description ?? "").trim();
+  const pdfUrl = String(req.body?.pdfUrl ?? "").trim();
+  const thumbnailUrl = String(req.body?.thumbnailUrl ?? "").trim();
+  const tags = String(req.body?.tags ?? "").trim();
+  const displayOrder = Number.isInteger(req.body?.displayOrder) ? req.body.displayOrder : 0;
+  const isPublished = Boolean(req.body?.isPublished);
+  if (!examId || !title) { res.status(422).json({ message: "Exam and title are required." }); return; }
+  if (!pdfUrl) { res.status(422).json({ message: "PDF URL is required." }); return; }
+  try {
+    const r = await pool.query<{ id: number }>(
+      `INSERT INTO exam_notes (exam_id, subject_id, title, description, pdf_url, thumbnail_url, tags, display_order, is_published, published_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+      [examId, subjectId, title, description, pdfUrl, thumbnailUrl, tags, displayOrder, isPublished, isPublished ? new Date() : null],
+    );
+    res.status(201).json({ id: r.rows[0]!.id, title });
+  } catch (e: any) {
+    if (e.code === "23503") { res.status(404).json({ message: "Exam or subject not found." }); return; }
+    sendServerError(res, e);
+  }
+});
+
+adminRouter.patch("/notes/exam-notes/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id < 1) { res.status(400).json({ message: "Invalid note." }); return; }
+  const fields: string[] = []; const vals: unknown[] = [];
+  if (req.body?.title) { fields.push(`title = $${vals.push(String(req.body.title).trim())}`); }
+  if (req.body?.description !== undefined) { fields.push(`description = $${vals.push(String(req.body.description).trim())}`); }
+  if (req.body?.pdfUrl !== undefined) { fields.push(`pdf_url = $${vals.push(String(req.body.pdfUrl).trim())}`); }
+  if (req.body?.thumbnailUrl !== undefined) { fields.push(`thumbnail_url = $${vals.push(String(req.body.thumbnailUrl).trim())}`); }
+  if (req.body?.tags !== undefined) { fields.push(`tags = $${vals.push(String(req.body.tags).trim())}`); }
+  if (req.body?.displayOrder !== undefined) { fields.push(`display_order = $${vals.push(Number(req.body.displayOrder))}`); }
+  if (req.body?.subjectId !== undefined) { fields.push(`subject_id = $${vals.push(req.body.subjectId ? Number(req.body.subjectId) : null)}`); }
+  if (req.body?.isPublished !== undefined) {
+    const pub = Boolean(req.body.isPublished);
+    fields.push(`is_published = $${vals.push(pub)}`);
+    fields.push(`published_at = $${vals.push(pub ? new Date() : null)}`);
+  }
+  if (!fields.length) { res.status(422).json({ message: "Nothing to update." }); return; }
+  fields.push(`updated_at = NOW()`);
+  try {
+    const r = await pool.query(`UPDATE exam_notes SET ${fields.join(", ")} WHERE id = $${vals.push(id)} RETURNING id`, vals);
+    if (!r.rowCount) { res.status(404).json({ message: "Note not found." }); return; }
+    res.json({ updated: true });
+  } catch (e) { sendServerError(res, e); }
+});
+
+adminRouter.delete("/notes/exam-notes/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id < 1) { res.status(400).json({ message: "Invalid note." }); return; }
+  try {
+    const r = await pool.query(`DELETE FROM exam_notes WHERE id = $1 RETURNING id`, [id]);
+    if (!r.rowCount) { res.status(404).json({ message: "Note not found." }); return; }
+    res.json({ deleted: true });
+  } catch (e) { sendServerError(res, e); }
+});
+
 router.use("/admin", adminRouter);
 
 export default router;
