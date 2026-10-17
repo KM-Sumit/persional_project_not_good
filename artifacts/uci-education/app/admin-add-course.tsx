@@ -269,14 +269,14 @@ export default function AdminAddCourseScreen() {
                 <MiniField
                   placeholder="Video ka title (e.g. Indian History - Part 1)"
                   value={v.title}
-                  onChangeText={(t) => updateVideo(v.id, "title", t)}
+                  onChangeText={(t: string) => updateVideo(v.id, "title", t)}
                   icon="type"
                   colors={colors}
                 />
                 <MiniField
                   placeholder="YouTube URL (https://youtube.com/watch?v=...)"
                   value={v.youtubeUrl}
-                  onChangeText={(t) => updateVideo(v.id, "youtubeUrl", t)}
+                  onChangeText={(t: string) => updateVideo(v.id, "youtubeUrl", t)}
                   icon="youtube"
                   colors={colors}
                   keyboardType="url"
@@ -318,14 +318,14 @@ export default function AdminAddCourseScreen() {
                 <MiniField
                   placeholder="Note ka title (e.g. Modern History Summary)"
                   value={n.title}
-                  onChangeText={(t) => updateNote(n.id, "title", t)}
+                  onChangeText={(t: string) => updateNote(n.id, "title", t)}
                   icon="type"
                   colors={colors}
                 />
                 <MiniField
                   placeholder="PDF URL (optional)"
                   value={n.pdfUrl}
-                  onChangeText={(t) => updateNote(n.id, "pdfUrl", t)}
+                  onChangeText={(t: string) => updateNote(n.id, "pdfUrl", t)}
                   icon="link"
                   colors={colors}
                   keyboardType="url"
@@ -333,7 +333,7 @@ export default function AdminAddCourseScreen() {
                 <MiniField
                   placeholder="Note content (optional text)"
                   value={n.content}
-                  onChangeText={(t) => updateNote(n.id, "content", t)}
+                  onChangeText={(t: string) => updateNote(n.id, "content", t)}
                   icon="edit-3"
                   colors={colors}
                   multiline
@@ -462,7 +462,7 @@ const styles = StyleSheet.create({
   posterHint: { fontSize: 12 },
 
   // Fields
-  fieldLabel: { fontSize: 11, fontWeight: "800", letterSpacing: 0.4, marginBottom: 7, marginTop: 14 },
+  fieldLabel: { fontSize: 11, fontWeight: "800", letterSpacing: 0.4, marginBottom: 7, marginTop: 16 },
   fieldWrap: {
     borderRadius: 14, borderWidth: 1, paddingHorizontal: 13,
     flexDirection: "row", alignItems: "center", gap: 10,
@@ -485,7 +485,7 @@ const styles = StyleSheet.create({
   // Video/Note item cards
   itemCard: {
     borderRadius: 16, borderWidth: 1,
-    padding: 14, marginBottom: 12, gap: 10,
+    padding: 14, marginBottom: 14, gap: 10,
   },
   itemHeader: { flexDirection: "row", alignItems: "center", gap: 10 },
   itemNum: { width: 28, height: 28, borderRadius: 8, alignItems: "center", justifyContent: "center" },
@@ -501,7 +501,7 @@ const styles = StyleSheet.create({
   addItemBtn: {
     flexDirection: "row", alignItems: "center", justifyContent: "center",
     gap: 8, borderRadius: 14, borderWidth: 1.5, borderStyle: "dashed",
-    paddingVertical: 14, marginBottom: 16,
+    paddingVertical: 14, marginBottom: 20,
   },
   addItemText: { fontSize: 13, fontWeight: "700" },
 
@@ -509,14 +509,14 @@ const styles = StyleSheet.create({
   errorBox: {
     flexDirection: "row", alignItems: "center", gap: 8,
     backgroundColor: "#fef2f2", borderRadius: 12,
-    padding: 12, marginTop: 8,
+    padding: 12, marginTop: 12, marginBottom: 12,
   },
   errorText: { fontSize: 12, color: "#ef4444", flex: 1 },
 
   // Submit
   submitBtn: {
     height: 54, borderRadius: 16, flexDirection: "row",
-    alignItems: "center", justifyContent: "center", gap: 10, marginTop: 20,
+    alignItems: "center", justifyContent: "center", gap: 10, marginTop: 8,
   },
   submitBtnText: { fontSize: 15, fontWeight: "800", color: "#fff" },
 

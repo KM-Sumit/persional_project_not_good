@@ -237,11 +237,12 @@ export default function HomeScreen() {
           <Text style={styles.adminBadgeText}>ADMIN DASHBOARD</Text>
         </View>
         <View style={styles.adminGrid}>
+          <AdminCard label="Scheduled Tests" icon="clock" color="#ef4444" onPress={() => router.push("/admin-scheduled-tests")} />
+          <AdminCard label="PYQ Papers" icon="layers" color="#10b981" onPress={() => router.push("/admin-pyq")} />
           <AdminCard label="Banners" icon="image" color="#ec4899" onPress={() => router.push("/admin-banners")} />
           <AdminCard label="Add Course" icon="book-open" color="#6366f1" onPress={() => router.push("/admin-add-course")} />
-          <AdminCard label="Add Note" icon="file-text" color="#10b981" onPress={() => router.push("/admin-add-note")} />
+          <AdminCard label="Add Note" icon="file-text" color="#06b6d4" onPress={() => router.push("/admin-add-note")} />
           <AdminCard label="Generate Test" icon="zap" color="#f59e0b" onPress={() => router.push("/admin-generate-test")} />
-          <AdminCard label="Manage Notes" icon="folder" color="#2563EB" onPress={() => router.push("/admin-notes")} />
         </View>
 
         {dashQ.isLoading ? <LoadingState label="Loading stats…" /> : null}
@@ -380,22 +381,156 @@ export default function HomeScreen() {
         <View style={{ marginBottom: 4 }}>
           <SectionHeader title="Quick Access" count={undefined} accent="#D97706" />
           <View style={styles.quickGrid}>
+            <QuickTile label="Live Tests" desc="Scheduled official exams & ranks" icon="clock" bg="#FFF1F2" iconBg="#FECDD3" iconColor="#DC2626"
+              onPress={() => router.push({ pathname: "/(tabs)/tests", params: { type: "scheduled" } })} />
+            <QuickTile label="PYQ Papers" desc="Previous year papers with solutions" icon="layers" bg="#EDFDF4" iconBg="#BBF7D0" iconColor="#16A34A"
+              onPress={() => router.push({ pathname: "/(tabs)/tests", params: { type: "pyq" } })} />
             <QuickTile label="Courses" desc="Learn from recorded lectures" icon="book-open" bg="#FFF4EA" iconBg="#FFE0C2" iconColor="#D97706"
+              onPress={() => scrollTo("courses")} />
+            <QuickTile label="Live Class" desc="Join live interactive classes" icon="video" bg="#EDFDF4" iconBg="#BBF7D0" iconColor="#16A34A"
               onPress={() => router.navigate("/(tabs)/courses")} />
-            <QuickTile label="Notes" desc="PDF notes & study material" icon="file-text" bg="#EFF6FF" iconBg="#BFDBFE" iconColor="#2563EB"
+            <QuickTile label="Study Notes" desc="Download PDF notes & summaries" icon="file-text" bg="#F3F0FF" iconBg="#DDD6FE" iconColor="#7C3AED"
               onPress={() => router.navigate("/(tabs)/notes")} />
-            <QuickTile label="Tests" desc="Mock tests & practice sets" icon="check-square" bg="#FFF1F2" iconBg="#FECDD3" iconColor="#DC2626"
-              onPress={() => router.navigate("/(tabs)/tests")} />
-            <QuickTile label="Job Update" desc="Latest job alerts & opportunities" icon="briefcase" bg="#F3F0FF" iconBg="#DDD6FE" iconColor="#7C3AED"
-              onPress={() => router.navigate("/(tabs)/profile")} />
-            <QuickTile label="Support" desc="Get help & contact us" icon="headphones" bg="#FFFBEB" iconBg="#FDE68A" iconColor="#B45309"
-              onPress={() => router.navigate("/(tabs)/profile")} />
-            <QuickTile label="My Progress" desc="Track your learning journey" icon="trending-up" bg="#F0FFF4" iconBg="#BBF7D0" iconColor="#059669"
+            <QuickTile label="My Progress" desc="Track test scores & accuracy" icon="trending-up" bg="#F0FFF4" iconBg="#BBF7D0" iconColor="#059669"
               onPress={() => router.navigate("/(tabs)/profile")} />
           </View>
         </View>
       ) : null}
 
+      {/* ── COMPETITIVE EXAMS CATEGORIES (hidden while searching) ── */}
+      {!isSearching ? (
+        <View style={{ marginBottom: 12 }}>
+          <View style={styles.sectionHeader}>
+            <View style={[styles.sectionAccent, { backgroundColor: "#6366f1" }]} />
+            <Text style={styles.sectionTitle}>Target Competitive Exams</Text>
+            <Pressable onPress={() => router.push("/(tabs)/tests")} style={{ marginLeft: "auto" }}>
+              <Text style={[styles.seeAll, { color: "#6366f1" }]}>All Tests →</Text>
+            </Pressable>
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -16 }} contentContainerStyle={{ paddingHorizontal: 16, gap: 10 }}>
+            {[
+              { id: "ssc-exams", name: "SSC Exams", tag: "CGL · CHSL · MTS · GD", icon: "award", color: "#6366f1", bg: "#EEF2FF" },
+              { id: "railway-exams", name: "Railway Exams", tag: "NTPC · Group D · ALP", icon: "zap", color: "#059669", bg: "#ECFDF5" },
+              { id: "mppsc-exams", name: "MPPSC", tag: "State Service · Forest · Prelims", icon: "shield", color: "#D97706", bg: "#FFFBEB" },
+              { id: "mp-police-exams", name: "MP Police", tag: "Constable · Sub Inspector", icon: "compass", color: "#DC2626", bg: "#FEF2F2" },
+            ].map((cat) => (
+              <Pressable
+                key={cat.id}
+                onPress={() => router.push({ pathname: "/(tabs)/tests", params: { categorySlug: cat.id } })}
+                style={({ pressed }) => [
+                  styles.categoryCard,
+                  { backgroundColor: cat.bg, borderColor: cat.color + "30", opacity: pressed ? 0.9 : 1 },
+                ]}
+              >
+                <View style={[styles.categoryIconWrap, { backgroundColor: cat.color + "20" }]}>
+                  <Feather name={cat.icon as any} size={22} color={cat.color} />
+                </View>
+                <Text style={[styles.categoryName, { color: colors.foreground }]}>{cat.name}</Text>
+                <Text style={styles.categoryTag} numberOfLines={1}>{cat.tag}</Text>
+                <View style={[styles.categoryExplorePill, { backgroundColor: cat.color }]}>
+                  <Text style={styles.categoryExploreText}>Explore PYQ & Tests</Text>
+                  <Feather name="arrow-right" size={12} color="#fff" />
+                </View>
+              </Pressable>
+            ))}
+          </ScrollView>
+        </View>
+      ) : null}
+
+      {/* ── COURSES SECTION ── */}
+      <View onLayout={(e) => { sectionY.current["courses"] = e.nativeEvent.layout.y; }}>
+        <SectionHeader
+          title={isSearching ? `"${search}" ke results` : "Courses"}
+          count={filteredCourses.length}
+          accent="#D97706"
+        />
+        {homeQ.isLoading ? <LoadingState label="Courses load ho rahe hain…" /> : null}
+        {filteredCourses.length > 0
+          ? filteredCourses.map((c) => (
+              <CourseCard key={c.id} course={c} onPress={() => openCourse(c.id)} />
+            ))
+          : !homeQ.isLoading
+          ? <EmptyState
+              title={isSearching ? "Koi course nahi mila" : "Abhi koi course nahi"}
+              description={isSearching ? `"${search}" se koi match nahi.` : "Courses jald hi add honge."}
+            />
+          : null}
+      </View>
+
+      {/* ── CONTINUE LEARNING (hidden while searching) ── */}
+      {!isSearching && courses.length > 0 ? (
+        <View style={{ marginBottom: 8 }}>
+          <View style={styles.sectionHeader}>
+            <View style={[styles.sectionAccent, { backgroundColor: "#D97706" }]} />
+            <Text style={styles.sectionTitle}>Continue Learning</Text>
+            <Pressable onPress={() => scrollTo("courses")} style={{ marginLeft: "auto" }}>
+              <Text style={styles.seeAll}>See All →</Text>
+            </Pressable>
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -16 }} contentContainerStyle={{ paddingHorizontal: 16, gap: 12 }}>
+            {courses.slice(0, 5).map((c, i) => (
+              <Pressable key={c.id} onPress={() => openCourse(c.id)}
+                style={({ pressed }) => [styles.continueCard, { opacity: pressed ? 0.9 : 1 }]}>
+                <View style={styles.continueCover}>
+                  {c.thumbnailUrl
+                    ? <Image source={{ uri: c.thumbnailUrl }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+                    : <View style={[StyleSheet.absoluteFill, { backgroundColor: i % 2 === 0 ? "#1e293b" : "#0f2027", justifyContent: "center", alignItems: "center" }]}>
+                        <Text style={{ fontSize: 32 }}>📚</Text>
+                      </View>}
+                  <View style={styles.durationBadge}><Text style={styles.durationText}>{c.lessonCount > 0 ? `${c.lessonCount * 12}:00` : "18:20"}</Text></View>
+                  <View style={styles.playCircle}><Feather name="play" size={18} color="#fff" /></View>
+                </View>
+                <View style={styles.continueMeta}>
+                  <View style={[styles.examTag2, { backgroundColor: "#D97706" + "18" }]}>
+                    <Text style={[styles.examTagTxt2, { color: "#D97706" }]}>{c.exam}</Text>
+                  </View>
+                  <Text numberOfLines={2} style={styles.continueTitle}>{c.title}</Text>
+                  <Text style={styles.continueSub}>{c.instructor} · Lecture {i + 1}</Text>
+                  <View style={styles.progressRow}>
+                    <View style={[styles.progressTrackSm, { backgroundColor: "#e2e8f0" }]}>
+                      <View style={[styles.progressFillSm, { width: `${Math.max(10, (i + 1) * 15)}%`, backgroundColor: "#D97706" }]} />
+                    </View>
+                    <Text style={styles.progressPct}>{Math.max(10, (i + 1) * 15)}%</Text>
+                  </View>
+                  <View style={styles.continueFooter}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                      <Feather name="clock" size={11} color="#64748b" />
+                      <Text style={styles.timeLeft}>{12 - i} min left</Text>
+                    </View>
+                    <Pressable onPress={() => openCourse(c.id)} style={styles.continueBtn}>
+                      <Text style={styles.continueBtnTxt}>Continue</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              </Pressable>
+            ))}
+          </ScrollView>
+        </View>
+      ) : null}
+
+      {/* ── NOTES SECTION (hidden while searching) ── */}
+      {!isSearching ? (
+        <View onLayout={(e) => { sectionY.current["notes"] = e.nativeEvent.layout.y; }}>
+          <SectionHeader title="Notes" count={notes.length} accent="#2563EB" />
+          {notes.length > 0
+            ? notes.map((n) => <NoteCard key={n.id} note={n} onPress={() => openNote(n.id)} />)
+            : !homeQ.isLoading
+            ? <EmptyState title="Notes abhi nahi hain" description="Study notes jald add honge." />
+            : null}
+        </View>
+      ) : null}
+
+      {/* ── TESTS SECTION (hidden while searching) ── */}
+      {!isSearching ? (
+        <View onLayout={(e) => { sectionY.current["tests"] = e.nativeEvent.layout.y; }}>
+          <SectionHeader title="Tests" count={tests.length} accent="#DC2626" />
+          {tests.length > 0
+            ? tests.map((t) => <TestCard key={t.id} test={t} onPress={() => openTest(t.id)} />)
+            : !homeQ.isLoading
+            ? <EmptyState title="Koi test nahi" description="Practice tests jald available honge." />
+            : null}
+        </View>
+      ) : null}
     </ScrollView>
   );
 }
@@ -576,4 +711,40 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: 5,
   },
   continueBtnTxt: { color: "#fff", fontSize: 11, fontWeight: "800" },
+  categoryCard: {
+    width: 220,
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: 14,
+    gap: 8,
+  },
+  categoryIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  categoryName: {
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  categoryTag: {
+    fontSize: 11,
+    color: "#64748b",
+  },
+  categoryExplorePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    borderRadius: 10,
+    paddingVertical: 7,
+    marginTop: 4,
+  },
+  categoryExploreText: {
+    color: "#fff",
+    fontSize: 11,
+    fontWeight: "700",
+  },
 });

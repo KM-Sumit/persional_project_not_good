@@ -112,10 +112,10 @@ const styles = StyleSheet.create({
   label: { fontSize: 12, fontWeight: "700", marginBottom: 7 },
   inputWrap: { height: 51, borderRadius: 15, borderWidth: 1, paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 10 },
   input: { flex: 1, fontSize: 14, paddingVertical: 0 },
-  error: { fontSize: 12, lineHeight: 18, marginVertical: 3 },
-  button: { height: 52, borderRadius: 16, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 9, marginTop: 9 },
+  error: { fontSize: 12, lineHeight: 18, marginTop: 12, marginBottom: 12 },
+  button: { height: 52, borderRadius: 16, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 9, marginTop: 8 },
   buttonText: { fontSize: 14, fontWeight: "800" },
-  footer: { flexDirection: "row", alignItems: "center", justifyContent: "center", marginTop: 21 },
+  footer: { flexDirection: "row", alignItems: "center", justifyContent: "center", marginTop: 24 },
   link: { fontSize: 13, fontWeight: "800" },
   footnote: { textAlign: "center", fontSize: 11, marginTop: 26 },
 });

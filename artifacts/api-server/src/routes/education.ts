@@ -8,6 +8,15 @@ import {
   verifyPassword,
   type AuthUser,
 } from "../lib/auth";
+import {
+  generateAccessPassword,
+  computeScheduledStatus,
+  checkPasswordRateLimit,
+  recordFailedPasswordAttempt,
+  resetPasswordRateLimit,
+  formatKolkataTime,
+} from "../lib/test-security";
+import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -67,10 +76,15 @@ router.post("/auth/login", async (req, res) => {
     return;
   }
   try {
+    const cleanMobile = identifier.replace(/^\+91/, "").replace(/\D/g, "");
     const result = await pool.query<AuthUser & { password_hash: string }>(
       `SELECT id, name, email, mobile, role, password_hash
-       FROM users WHERE lower(email) = lower($1) OR mobile = $1 LIMIT 1`,
-      [identifier],
+       FROM users 
+       WHERE lower(email) = lower($1) 
+          OR mobile = $1 
+          OR (length($2) = 10 AND (mobile = $2 OR mobile = '+91' || $2))
+       LIMIT 1`,
+      [identifier, cleanMobile],
     );
     const user = result.rows[0];
     if (!user || !(await verifyPassword(password, user.password_hash))) {
@@ -293,20 +307,212 @@ router.get("/notes/:id", requireAuth, async (req, res) => {
   }
 });
 
+// Categories & Exams Routes
+router.get("/categories", async (_req, res) => {
+  try {
+    const categoriesResult = await pool.query(
+      `SELECT id, name, slug, description, icon, sort_order AS "sortOrder"
+       FROM exam_categories
+       WHERE enabled = true
+       ORDER BY sort_order, id`,
+    );
+    const examsResult = await pool.query(
+      `SELECT e.id, e.category_id AS "categoryId", e.name, e.slug, e.description, e.sort_order AS "sortOrder",
+              (SELECT COUNT(*)::int FROM tests t WHERE t.exam_id = e.id AND t.published = true AND t.test_type = 'pyq') AS "pyqCount",
+              (SELECT COUNT(*)::int FROM tests t WHERE t.exam_id = e.id AND t.published = true AND t.test_type = 'mock') AS "mockCount",
+              (SELECT COUNT(*)::int FROM tests t WHERE t.exam_id = e.id AND t.published = true AND t.test_type = 'scheduled') AS "scheduledCount"
+       FROM exams e
+       WHERE e.enabled = true
+       ORDER BY e.sort_order, e.id`,
+    );
+
+    const categories = categoriesResult.rows.map((cat) => ({
+      ...cat,
+      exams: examsResult.rows.filter((ex) => ex.categoryId === cat.id),
+    }));
+
+    res.json({ categories });
+  } catch (error) {
+    sendServerError(res, error);
+  }
+});
+
+router.get("/exams/:id", async (req, res) => {
+  const examId = Number(req.params.id);
+  if (!Number.isInteger(examId) || examId < 1) {
+    res.status(400).json({ message: "Invalid exam ID." });
+    return;
+  }
+  try {
+    const examResult = await pool.query(
+      `SELECT e.id, e.category_id AS "categoryId", e.name, e.slug, e.description,
+              c.name AS "categoryName", c.slug AS "categorySlug",
+              (SELECT COUNT(*)::int FROM tests t WHERE t.exam_id = e.id AND t.published = true AND t.test_type = 'pyq') AS "pyqCount",
+              (SELECT COUNT(*)::int FROM tests t WHERE t.exam_id = e.id AND t.published = true AND t.test_type = 'mock') AS "mockCount",
+              (SELECT COUNT(*)::int FROM tests t WHERE t.exam_id = e.id AND t.published = true AND t.test_type = 'scheduled') AS "scheduledCount"
+       FROM exams e
+       JOIN exam_categories c ON c.id = e.category_id
+       WHERE e.id = $1 AND e.enabled = true`,
+      [examId],
+    );
+    const exam = examResult.rows[0];
+    if (!exam) {
+      res.status(404).json({ message: "Exam not found." });
+      return;
+    }
+    res.json({ exam });
+  } catch (error) {
+    sendServerError(res, error);
+  }
+});
+
+router.get("/exams/:id/tests", requireAuth, async (req, res) => {
+  const examId = Number(req.params.id);
+  if (!Number.isInteger(examId) || examId < 1) {
+    res.status(400).json({ message: "Invalid exam ID." });
+    return;
+  }
+  const testType = typeof req.query.type === "string" ? req.query.type : null;
+  const year = req.query.year ? Number(req.query.year) : null;
+  const shift = typeof req.query.shift === "string" ? req.query.shift.trim() : null;
+  const search = typeof req.query.search === "string" ? `%${req.query.search.trim()}%` : null;
+
+  try {
+    const result = await pool.query(
+      `SELECT t.id, t.title, t.subject, t.topic, t.question_count AS "questionCount",
+              t.duration_minutes AS "durationMinutes", t.difficulty, t.test_type AS "testType",
+              t.description, t.instructions, t.marks_per_question AS "marksPerQuestion",
+              t.negative_marking AS "negativeMarking", t.total_marks AS "totalMarks",
+              t.scheduled_start_at AS "scheduledStartAt", t.scheduled_end_at AS "scheduledEndAt",
+              t.status, t.year, t.shift, t.language, t.source_info AS "sourceInfo",
+              t.is_verified_pyq AS "isVerifiedPyq",
+              t.access_type AS "accessType", t.is_precision AS "isPrecision",
+              t.price, t.bundle_name AS "bundleName",
+              (t.access_password_hash IS NOT NULL) AS "requiresPassword",
+              EXISTS (
+                SELECT 1 FROM test_attempts a
+                WHERE a.test_id = t.id AND a.user_id = $1 AND a.submitted_at IS NOT NULL
+              ) AS attempted,
+              (
+                SELECT a.id FROM test_attempts a
+                WHERE a.test_id = t.id AND a.user_id = $1 AND a.submitted_at IS NULL
+                ORDER BY a.started_at DESC LIMIT 1
+              ) AS "activeAttemptId",
+              EXISTS (
+                SELECT 1 FROM user_purchases up
+                WHERE up.user_id = $1 AND ((up.item_type = 'test' AND up.item_id = t.id) OR (up.item_type = 'bundle' AND up.item_id = t.id))
+              ) AS "hasPurchased"
+       FROM tests t
+       WHERE t.exam_id = $2 AND t.published = true
+         AND ($3::text IS NULL OR t.test_type = $3)
+         AND ($4::int IS NULL OR t.year = $4)
+         AND ($5::text IS NULL OR t.shift = $5)
+         AND ($6::text IS NULL OR t.title ILIKE $6 OR t.subject ILIKE $6 OR t.topic ILIKE $6)
+       ORDER BY
+         CASE WHEN t.test_type = 'scheduled' THEN t.scheduled_start_at END DESC NULLS LAST,
+         t.year DESC NULLS LAST,
+         t.created_at DESC`,
+      [req.authUser!.id, examId, testType, year, shift, search],
+    );
+
+    const tests = result.rows.map((row) => ({
+      ...row,
+      computedStatus: row.testType === "scheduled" ? computeScheduledStatus(row) : row.status,
+    }));
+
+    res.json({ tests });
+  } catch (error) {
+    sendServerError(res, error);
+  }
+});
+
+router.get("/scheduled-tests", requireAuth, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT t.id, t.title, t.subject, t.topic, t.question_count AS "questionCount",
+              t.duration_minutes AS "durationMinutes", t.difficulty, t.test_type AS "testType",
+              t.description, t.instructions, t.marks_per_question AS "marksPerQuestion",
+              t.negative_marking AS "negativeMarking", t.total_marks AS "totalMarks",
+              t.scheduled_start_at AS "scheduledStartAt", t.scheduled_end_at AS "scheduledEndAt",
+              t.status, e.name AS "examName", c.name AS "categoryName",
+              t.access_type AS "accessType", t.is_precision AS "isPrecision",
+              t.price, t.bundle_name AS "bundleName",
+              (t.access_password_hash IS NOT NULL) AS "requiresPassword",
+              EXISTS (
+                SELECT 1 FROM test_attempts a
+                WHERE a.test_id = t.id AND a.user_id = $1 AND a.submitted_at IS NOT NULL
+              ) AS attempted,
+              (
+                SELECT a.id FROM test_attempts a
+                WHERE a.test_id = t.id AND a.user_id = $1 AND a.submitted_at IS NULL
+                ORDER BY a.started_at DESC LIMIT 1
+              ) AS "activeAttemptId",
+              EXISTS (
+                SELECT 1 FROM user_purchases up
+                WHERE up.user_id = $1 AND ((up.item_type = 'test' AND up.item_id = t.id) OR (up.item_type = 'bundle' AND up.item_id = t.id))
+              ) AS "hasPurchased"
+       FROM tests t
+       LEFT JOIN exams e ON e.id = t.exam_id
+       LEFT JOIN exam_categories c ON c.id = e.category_id
+       WHERE t.published = true AND t.test_type = 'scheduled'
+       ORDER BY t.scheduled_start_at ASC NULLS LAST, t.created_at DESC`,
+      [req.authUser!.id],
+    );
+
+    const tests = result.rows.map((t) => ({
+      ...t,
+      liveStatus: computeScheduledStatus(t),
+      serverTime: new Date().toISOString(),
+      serverTimeKolkata: formatKolkataTime(new Date()),
+    }));
+
+    res.json({ tests });
+  } catch (error) {
+    sendServerError(res, error);
+  }
+});
+
 router.get("/tests", requireAuth, async (req, res) => {
   try {
     const search = typeof req.query.search === "string" ? `%${req.query.search.trim()}%` : null;
+    const testType = typeof req.query.type === "string" ? req.query.type : null;
     const result = await pool.query(
       `SELECT t.id, t.title, t.subject, t.topic, t.question_count AS "questionCount",
-              t.duration_minutes AS "durationMinutes", t.difficulty,
-              EXISTS (SELECT 1 FROM test_attempts a WHERE a.test_id = t.id AND a.user_id = $1
-                AND a.submitted_at IS NOT NULL) AS attempted
+              t.duration_minutes AS "durationMinutes", t.difficulty, t.test_type AS "testType",
+              t.description, t.instructions, t.marks_per_question AS "marksPerQuestion",
+              t.negative_marking AS "negativeMarking", t.total_marks AS "totalMarks",
+              t.scheduled_start_at AS "scheduledStartAt", t.scheduled_end_at AS "scheduledEndAt",
+              t.status, t.year, t.shift, t.language, t.source_info AS "sourceInfo",
+              t.is_verified_pyq AS "isVerifiedPyq",
+              t.access_type AS "accessType", t.is_precision AS "isPrecision",
+              t.price, t.bundle_name AS "bundleName",
+              (t.access_password_hash IS NOT NULL) AS "requiresPassword",
+              EXISTS (
+                SELECT 1 FROM test_attempts a
+                WHERE a.test_id = t.id AND a.user_id = $1 AND a.submitted_at IS NOT NULL
+              ) AS attempted,
+              (
+                SELECT a.id FROM test_attempts a
+                WHERE a.test_id = t.id AND a.user_id = $1 AND a.submitted_at IS NULL
+                ORDER BY a.started_at DESC LIMIT 1
+              ) AS "activeAttemptId",
+              EXISTS (
+                SELECT 1 FROM user_purchases up
+                WHERE up.user_id = $1 AND ((up.item_type = 'test' AND up.item_id = t.id) OR (up.item_type = 'bundle' AND up.item_id = t.id))
+              ) AS "hasPurchased"
        FROM tests t WHERE t.published = true
          AND ($2::text IS NULL OR t.title ILIKE $2 OR t.topic ILIKE $2 OR t.subject ILIKE $2)
+         AND ($3::text IS NULL OR t.test_type = $3)
        ORDER BY t.created_at DESC`,
-      [req.authUser!.id, search],
+      [req.authUser!.id, search, testType],
     );
-    res.json({ tests: result.rows });
+
+    const tests = result.rows.map((row) => ({
+      ...row,
+      computedStatus: row.testType === "scheduled" ? computeScheduledStatus(row) : row.status,
+    }));
+
+    res.json({ tests });
   } catch (error) {
     sendServerError(res, error);
   }
@@ -320,22 +526,141 @@ router.get("/tests/:id", requireAuth, async (req, res) => {
   }
   try {
     const testResult = await pool.query(
-      `SELECT id, title, subject, topic, question_count AS "questionCount",
-              duration_minutes AS "durationMinutes", difficulty
-       FROM tests WHERE id = $1 AND published = true`,
-      [testId],
+      `SELECT t.id, t.title, t.subject, t.topic, t.question_count AS "questionCount",
+              t.duration_minutes AS "durationMinutes", t.difficulty, t.test_type AS "testType",
+              t.description, t.instructions, t.marks_per_question AS "marksPerQuestion",
+              t.negative_marking AS "negativeMarking", t.total_marks AS "totalMarks",
+              t.scheduled_start_at AS "scheduledStartAt", t.scheduled_end_at AS "scheduledEndAt",
+              t.status, t.year, t.shift, t.language, t.source_info AS "sourceInfo",
+              t.is_verified_pyq AS "isVerifiedPyq", e.name AS "examName", c.name AS "categoryName",
+              t.access_type AS "accessType", t.is_precision AS "isPrecision",
+              t.price, t.bundle_name AS "bundleName",
+              (t.access_password_hash IS NOT NULL) AS "requiresPassword",
+              EXISTS (
+                SELECT 1 FROM test_attempts a
+                WHERE a.test_id = t.id AND a.user_id = $1 AND a.submitted_at IS NOT NULL
+              ) AS attempted,
+              (
+                SELECT a.id FROM test_attempts a
+                WHERE a.test_id = t.id AND a.user_id = $1 AND a.submitted_at IS NULL
+                ORDER BY a.started_at DESC LIMIT 1
+              ) AS "activeAttemptId",
+              EXISTS (
+                SELECT 1 FROM user_purchases up
+                WHERE up.user_id = $1 AND ((up.item_type = 'test' AND up.item_id = t.id) OR (up.item_type = 'bundle' AND up.item_id = t.id))
+              ) AS "hasPurchased"
+       FROM tests t
+       LEFT JOIN exams e ON e.id = t.exam_id
+       LEFT JOIN exam_categories c ON c.id = e.category_id
+       WHERE t.id = $2 AND t.published = true`,
+      [req.authUser!.id, testId],
     );
     const test = testResult.rows[0];
     if (!test) {
       res.status(404).json({ message: "Test not found." });
       return;
     }
-    const questionResult = await pool.query(
-      `SELECT id, prompt, options, topic, difficulty
-       FROM test_questions WHERE test_id = $1 ORDER BY sort_order, id`,
+
+    const computedStatus = test.testType === "scheduled" ? computeScheduledStatus(test) : test.status;
+
+    res.json({
+      test: {
+        ...test,
+        computedStatus,
+        serverTime: new Date().toISOString(),
+        serverTimeKolkata: formatKolkataTime(new Date()),
+      },
+    });
+  } catch (error) {
+    sendServerError(res, error);
+  }
+});
+
+router.post("/tests/:id/verify-access", requireAuth, async (req, res) => {
+  const testId = Number(req.params.id);
+  const password = typeof req.body?.password === "string" ? req.body.password.trim() : "";
+  const ip = req.ip || req.socket.remoteAddress || "0.0.0.0";
+  const userId = req.authUser!.id;
+
+  if (!Number.isInteger(testId) || testId < 1) {
+    res.status(400).json({ message: "Invalid test ID." });
+    return;
+  }
+
+  try {
+    const rateLimit = await checkPasswordRateLimit(pool, userId, testId, ip);
+    if (!rateLimit.allowed) {
+      res.status(429).json({ message: rateLimit.message });
+      return;
+    }
+
+    const testResult = await pool.query(
+      `SELECT id, title, published, status, test_type AS "testType",
+              scheduled_start_at AS "scheduledStartAt", scheduled_end_at AS "scheduledEndAt",
+              access_password_hash AS "accessPasswordHash", duration_minutes AS "durationMinutes"
+       FROM tests WHERE id = $1`,
       [testId],
     );
-    res.json({ test, questions: questionResult.rows });
+    const test = testResult.rows[0];
+    if (!test || !test.published || test.status === "cancelled") {
+      res.status(404).json({ message: "This test is not available or has been cancelled." });
+      return;
+    }
+
+    const now = Date.now();
+    if (test.scheduledStartAt) {
+      const startTime = new Date(test.scheduledStartAt).getTime();
+      const endTime = test.scheduledEndAt
+        ? new Date(test.scheduledEndAt).getTime()
+        : startTime + Number(test.durationMinutes) * 60_000;
+
+      if (now < startTime) {
+        res.status(403).json({
+          message: `This test has not started yet. Scheduled start: ${formatKolkataTime(test.scheduledStartAt)}`,
+          startsAt: test.scheduledStartAt,
+          serverTime: new Date().toISOString(),
+        });
+        return;
+      }
+      if (now >= endTime) {
+        res.status(403).json({
+          message: "This test has already concluded and is no longer accepting new attempts.",
+          endedAt: test.scheduledEndAt,
+          serverTime: new Date().toISOString(),
+        });
+        return;
+      }
+    }
+
+    if (test.accessPasswordHash) {
+      if (!password) {
+        res.status(422).json({ message: "Access password is required for this scheduled test." });
+        return;
+      }
+      const isValid = await verifyPassword(password, test.accessPasswordHash);
+      if (!isValid) {
+        const failure = await recordFailedPasswordAttempt(pool, userId, testId, ip);
+        if (failure.locked) {
+          res.status(429).json({
+            message: "Too many failed attempts. You are temporarily locked out for 15 minutes.",
+            locked: true,
+          });
+          return;
+        }
+        res.status(401).json({
+          message: `Incorrect access password. ${failure.attemptsLeft} attempt(s) remaining.`,
+          attemptsLeft: failure.attemptsLeft,
+        });
+        return;
+      }
+    }
+
+    await resetPasswordRateLimit(pool, userId, testId);
+    res.json({
+      verified: true,
+      message: "Access granted.",
+      testId,
+    });
   } catch (error) {
     sendServerError(res, error);
   }
@@ -343,6 +668,10 @@ router.get("/tests/:id", requireAuth, async (req, res) => {
 
 router.post("/tests/:id/start", requireAuth, async (req, res) => {
   const testId = Number(req.params.id);
+  const password = typeof req.body?.password === "string" ? req.body.password.trim() : "";
+  const ip = req.ip || req.socket.remoteAddress || "0.0.0.0";
+  const userId = req.authUser!.id;
+
   if (!Number.isInteger(testId) || testId < 1) {
     res.status(400).json({ message: "Invalid test." });
     return;
@@ -351,53 +680,181 @@ router.post("/tests/:id/start", requireAuth, async (req, res) => {
   try {
     await client.query("BEGIN");
     const testResult = await client.query(
-      `SELECT id, title, subject, topic, duration_minutes AS "durationMinutes"
+      `SELECT id, title, subject, topic, duration_minutes AS "durationMinutes",
+              published, status, test_type AS "testType", marks_per_question AS "marksPerQuestion",
+              negative_marking AS "negativeMarking", total_marks AS "totalMarks",
+              scheduled_start_at AS "scheduledStartAt", scheduled_end_at AS "scheduledEndAt",
+              access_password_hash AS "accessPasswordHash", instructions,
+              access_type AS "accessType", price, bundle_name AS "bundleName"
        FROM tests WHERE id = $1 AND published = true FOR SHARE`,
       [testId],
     );
     const test = testResult.rows[0];
-    if (!test) {
+    if (!test || test.status === "cancelled") {
       await client.query("ROLLBACK");
-      res.status(404).json({ message: "Test not found." });
+      res.status(404).json({ message: "Test not found or has been cancelled." });
       return;
     }
+
+    const now = Date.now();
+    if (test.testType === "scheduled" && test.scheduledStartAt) {
+      const startTime = new Date(test.scheduledStartAt).getTime();
+      const endTime = test.scheduledEndAt
+        ? new Date(test.scheduledEndAt).getTime()
+        : startTime + Number(test.durationMinutes) * 60_000;
+
+      if (now < startTime) {
+        await client.query("ROLLBACK");
+        res.status(403).json({
+          message: `This test has not started yet. Scheduled start: ${formatKolkataTime(test.scheduledStartAt)}`,
+          startsAt: test.scheduledStartAt,
+        });
+        return;
+      }
+      if (now >= endTime) {
+        await client.query("ROLLBACK");
+        res.status(403).json({ message: "This test has already concluded and is closed." });
+        return;
+      }
+    }
+
+    // Check for previous completed attempt (prevent unauthorized duplicate attempts)
+    const completedAttempt = await client.query(
+      `SELECT id, submitted_at AS "submittedAt", score, percentage
+       FROM test_attempts
+       WHERE user_id = $1 AND test_id = $2 AND submitted_at IS NOT NULL
+       LIMIT 1`,
+      [userId, testId],
+    );
+    if (completedAttempt.rows[0]) {
+      await client.query("ROLLBACK");
+      res.status(409).json({
+        message: "You have already completed this test. Duplicate attempts are not allowed.",
+        attemptId: completedAttempt.rows[0].id,
+      });
+      return;
+    }
+
+    // Check for existing active attempt (resumption / reconnect support)
     const existing = await client.query(
       `SELECT id, started_at AS "startedAt" FROM test_attempts
        WHERE user_id = $1 AND test_id = $2 AND submitted_at IS NULL
        ORDER BY started_at DESC LIMIT 1 FOR UPDATE`,
-      [req.authUser!.id, testId],
+      [userId, testId],
     );
     let attempt = existing.rows[0];
-    if (attempt) {
-      const deadline = new Date(attempt.startedAt).getTime() + Number(test.durationMinutes) * 60_000;
-      if (deadline <= Date.now()) {
-        await client.query(
-          "UPDATE test_attempts SET submitted_at = NOW() WHERE id = $1",
-          [attempt.id],
-        );
-        attempt = undefined;
+
+    // Password validation for new attempts
+    if (!attempt && test.accessPasswordHash) {
+      const rateLimit = await checkPasswordRateLimit(client, userId, testId, ip);
+      if (!rateLimit.allowed) {
+        await client.query("ROLLBACK");
+        res.status(429).json({ message: rateLimit.message });
+        return;
+      }
+      if (!password) {
+        await client.query("ROLLBACK");
+        res.status(422).json({ message: "Test access password is required." });
+        return;
+      }
+      const isValid = await verifyPassword(password, test.accessPasswordHash);
+      if (!isValid) {
+        const failure = await recordFailedPasswordAttempt(client, userId, testId, ip);
+        await client.query("COMMIT");
+        res.status(401).json({
+          message: `Incorrect access password. ${failure.attemptsLeft} attempt(s) remaining.`,
+          attemptsLeft: failure.attemptsLeft,
+        });
+        return;
+      }
+      await resetPasswordRateLimit(client, userId, testId);
+    }
+
+    // Check paid access for paid tests
+    if (test.accessType === 'paid' && test.price > 0) {
+      const purchaseCheck = await client.query(
+        `SELECT id FROM user_purchases
+         WHERE user_id = $1 AND ((item_type = 'test' AND item_id = $2) OR (item_type = 'bundle' AND item_id = $2))
+         LIMIT 1`,
+        [userId, testId],
+      );
+      if (!purchaseCheck.rows[0]) {
+        await client.query("ROLLBACK");
+        res.status(402).json({
+          message: "Payment required to access this test.",
+          price: test.price,
+          bundleName: test.bundleName,
+        });
+        return;
       }
     }
-    if (!attempt) {
+
+    let officialDeadline: Date;
+    if (attempt) {
+      const standardDeadline = new Date(attempt.startedAt).getTime() + Number(test.durationMinutes) * 60_000;
+      const scheduledLimit = test.scheduledEndAt ? new Date(test.scheduledEndAt).getTime() : standardDeadline;
+      const effectiveDeadlineMs = Math.min(standardDeadline, scheduledLimit);
+
+      if (effectiveDeadlineMs <= Date.now()) {
+        await client.query(
+          "UPDATE test_attempts SET submitted_at = NOW(), status = 'timed_out' WHERE id = $1",
+          [attempt.id],
+        );
+        await client.query("COMMIT");
+        res.status(403).json({ message: "Your test time has expired." });
+        return;
+      }
+      officialDeadline = new Date(effectiveDeadlineMs);
+    } else {
       const created = await client.query(
-        `INSERT INTO test_attempts (user_id, test_id, total_questions)
-         SELECT $1, $2, COUNT(*)::int FROM test_questions WHERE test_id = $2
+        `INSERT INTO test_attempts (user_id, test_id, total_questions, status)
+         SELECT $1, $2, COUNT(*)::int, 'in_progress' FROM test_questions WHERE test_id = $2
          RETURNING id, started_at AS "startedAt"`,
-        [req.authUser!.id, testId],
+        [userId, testId],
       );
       attempt = created.rows[0];
+      const standardDeadline = new Date(attempt.startedAt).getTime() + Number(test.durationMinutes) * 60_000;
+      const scheduledLimit = test.scheduledEndAt ? new Date(test.scheduledEndAt).getTime() : standardDeadline;
+      officialDeadline = new Date(Math.min(standardDeadline, scheduledLimit));
     }
+
+    // Strip correctIndex and explanation from questions before sending to student!
     const questionResult = await client.query(
-      `SELECT id, prompt, options FROM test_questions WHERE test_id = $1 ORDER BY sort_order, id`,
+      `SELECT id, prompt, options, marks, negative_marks AS "negativeMarks", topic, difficulty
+       FROM test_questions WHERE test_id = $1 ORDER BY sort_order, id`,
       [testId],
     );
+
+    // Fetch existing answers if reconnecting
+    const savedAnswersResult = await client.query(
+      `SELECT question_id AS "questionId", selected_option AS "selectedOption"
+       FROM test_answers WHERE attempt_id = $1`,
+      [attempt.id],
+    );
+    const savedAnswers: Record<string, number | null> = {};
+    for (const ans of savedAnswersResult.rows) {
+      savedAnswers[String(ans.questionId)] = ans.selectedOption;
+    }
+
     await client.query("COMMIT");
     res.status(201).json({
       attemptId: attempt.id,
       startedAt: attempt.startedAt,
-      deadline: new Date(new Date(attempt.startedAt).getTime() + Number(test.durationMinutes) * 60_000),
-      test,
+      deadline: officialDeadline,
+      serverTime: new Date().toISOString(),
+      test: {
+        id: test.id,
+        title: test.title,
+        subject: test.subject,
+        topic: test.topic,
+        durationMinutes: test.durationMinutes,
+        marksPerQuestion: test.marksPerQuestion,
+        negativeMarking: test.negativeMarking,
+        totalMarks: test.totalMarks,
+        instructions: test.instructions,
+      },
       questions: questionResult.rows,
+      savedAnswers,
     });
   } catch (error) {
     await client.query("ROLLBACK");
@@ -419,7 +876,11 @@ router.post("/test-attempts/:id/submit", requireAuth, async (req, res) => {
     await client.query("BEGIN");
     const attemptResult = await client.query(
       `SELECT a.id, a.test_id AS "testId", a.started_at AS "startedAt",
-              a.submitted_at AS "submittedAt", t.duration_minutes AS "durationMinutes"
+              a.submitted_at AS "submittedAt", t.duration_minutes AS "durationMinutes",
+              t.scheduled_end_at AS "scheduledEndAt",
+              t.marks_per_question AS "marksPerQuestion",
+              t.negative_marking AS "negativeMarking",
+              t.total_marks AS "configuredTotalMarks"
        FROM test_attempts a JOIN tests t ON t.id = a.test_id
        WHERE a.id = $1 AND a.user_id = $2 FOR UPDATE`,
       [attemptId, req.authUser!.id],
@@ -436,30 +897,54 @@ router.post("/test-attempts/:id/submit", requireAuth, async (req, res) => {
       return;
     }
     const questionResult = await client.query(
-      `SELECT id, correct_index AS "correctIndex" FROM test_questions
+      `SELECT id, correct_index AS "correctIndex", marks, negative_marks AS "negativeMarks"
+       FROM test_questions
        WHERE test_id = $1 ORDER BY sort_order, id`,
       [attempt.testId],
     );
-    const deadline = new Date(attempt.startedAt).getTime() + Number(attempt.durationMinutes) * 60_000;
-    const isLateSubmission = Date.now() > deadline + 2_000;
+
+    const standardDeadline = new Date(attempt.startedAt).getTime() + Number(attempt.durationMinutes) * 60_000;
+    const scheduledLimit = attempt.scheduledEndAt ? new Date(attempt.scheduledEndAt).getTime() : standardDeadline;
+    const effectiveDeadline = Math.min(standardDeadline, scheduledLimit);
+
+    // 10s grace period for network latency
+    const isLateSubmission = Date.now() > effectiveDeadline + 10_000;
+
+    const defaultMarks = Number(attempt.marksPerQuestion) || 1.0;
+    const defaultNegative = Number(attempt.negativeMarking) || 0.0;
+
     let correct = 0;
     let wrong = 0;
     let attempted = 0;
-    for (const question of questionResult.rows as Array<{ id: number; correctIndex: number }>) {
+    let rawScore = 0;
+
+    for (const question of questionResult.rows as Array<{ id: number; correctIndex: number; marks: number; negativeMarks: number }>) {
       const value = isLateSubmission ? undefined : rawAnswers[String(question.id)];
       const selected = Number.isInteger(value) && value >= 0 && value <= 3 ? value : null;
       const isCorrect = selected === question.correctIndex;
+      const qMarks = Number(question.marks) || defaultMarks;
+      const qNeg = Number(question.negativeMarks) || defaultNegative;
+
       if (selected !== null) {
         attempted += 1;
-        if (isCorrect) correct += 1;
-        else wrong += 1;
+        if (isCorrect) {
+          correct += 1;
+          rawScore += qMarks;
+        } else {
+          wrong += 1;
+          rawScore -= qNeg;
+        }
       }
       await client.query(
         `INSERT INTO test_answers (attempt_id, question_id, selected_option, is_correct)
-         VALUES ($1, $2, $3, $4)`,
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (attempt_id, question_id) DO UPDATE SET
+           selected_option = EXCLUDED.selected_option,
+           is_correct = EXCLUDED.is_correct`,
         [attemptId, question.id, selected, isCorrect],
       );
     }
+
     const total = questionResult.rowCount ?? 0;
     const unattempted = total - attempted;
     const now = new Date();
@@ -468,17 +953,33 @@ router.post("/test-attempts/:id/submit", requireAuth, async (req, res) => {
       Math.floor((now.getTime() - started.getTime()) / 1000),
       Number(attempt.durationMinutes) * 60,
     ));
-    const score = correct;
-    const percentage = total ? Math.round((correct / total) * 100) : 0;
-    const accuracy = attempted ? Math.round((correct / attempted) * 100) : 0;
+
+    const finalScore = parseFloat(Math.max(0, rawScore).toFixed(2));
+    const maxMarks = Number(attempt.configuredTotalMarks) > 0 ? Number(attempt.configuredTotalMarks) : total * defaultMarks;
+    const percentage = maxMarks > 0 ? parseFloat(((finalScore / maxMarks) * 100).toFixed(1)) : 0;
+    const accuracy = attempted ? parseFloat(((correct / attempted) * 100).toFixed(1)) : 0;
+
     await client.query(
-      `UPDATE test_attempts SET submitted_at = NOW(), score = $1, correct_answers = $2,
-       wrong_answers = $3, unattempted = $4, percentage = $5, accuracy = $6,
-       time_taken_seconds = $7 WHERE id = $8`,
-      [score, correct, wrong, unattempted, percentage, accuracy, timeTaken, attemptId],
+      `UPDATE test_attempts
+       SET submitted_at = NOW(), score = $1, correct_answers = $2,
+           wrong_answers = $3, unattempted = $4, percentage = $5, accuracy = $6,
+           time_taken_seconds = $7, total_marks = $1, max_marks = $8, status = 'submitted'
+       WHERE id = $9`,
+      [finalScore, correct, wrong, unattempted, percentage, accuracy, timeTaken, maxMarks, attemptId],
     );
     await client.query("COMMIT");
-    res.json({ attemptId, score, totalQuestions: total, correct, wrong, unattempted, percentage, accuracy, timeTakenSeconds: timeTaken });
+    res.json({
+      attemptId,
+      score: finalScore,
+      maxMarks,
+      totalQuestions: total,
+      correct,
+      wrong,
+      unattempted,
+      percentage,
+      accuracy,
+      timeTakenSeconds: timeTaken,
+    });
   } catch (error) {
     await client.query("ROLLBACK");
     sendServerError(res, error);
@@ -515,7 +1016,9 @@ router.get("/test-attempts/:id", requireAuth, async (req, res) => {
     const result = await pool.query(
       `SELECT a.id, a.test_id AS "testId", t.title AS "testTitle",
               a.started_at AS "startedAt", a.submitted_at AS "submittedAt",
-              a.score, a.total_questions AS "totalQuestions", a.correct_answers AS correct,
+              a.score, a.max_marks AS "maxMarks", t.total_marks AS "totalMarks",
+              t.marks_per_question AS "marksPerQuestion", t.negative_marking AS "negativeMarking",
+              a.total_questions AS "totalQuestions", a.correct_answers AS correct,
               a.wrong_answers AS wrong, a.unattempted, a.percentage, a.accuracy,
               a.time_taken_seconds AS "timeTakenSeconds"
        FROM test_attempts a JOIN tests t ON t.id = a.test_id
@@ -640,10 +1143,12 @@ Rules:
 - All questions must be about: ${topic}
 - Difficulty: ${difficulty}`;
 
-    const gptResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+    // Call Gemini API with both header and query param for maximum key compatibility
+    let gptResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(apiKey)}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "x-goog-api-key": apiKey,
       },
       body: JSON.stringify({
         system_instruction: { parts: [{ text: "You are an expert exam question creator. Always respond with valid JSON only." }] },
@@ -657,27 +1162,128 @@ Rules:
       }),
     });
 
-    if (!gptResponse.ok) {
+    // If 2.0-flash is not available, try 1.5-flash
+    if (!gptResponse.ok && gptResponse.status === 404) {
+      gptResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(apiKey)}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": apiKey,
+        },
+        body: JSON.stringify({
+          system_instruction: { parts: [{ text: "You are an expert exam question creator. Always respond with valid JSON only." }] },
+          contents: [
+            { role: "user", parts: [{ text: prompt }] },
+          ],
+          generationConfig: {
+            responseMimeType: "application/json",
+            temperature: 0.7,
+          },
+        }),
+      });
+    }
+
+    let parsed: { title: string; questions: Array<{ prompt: string; options: string[]; correctIndex: number; explanation: string }> } | null = null;
+
+    if (gptResponse.ok) {
+      try {
+        const gptData = (await gptResponse.json()) as any;
+        const rawContent = gptData.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+        const cleaned = rawContent.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+        const candidateParsed = JSON.parse(cleaned);
+        if (candidateParsed.title && Array.isArray(candidateParsed.questions) && candidateParsed.questions.length > 0) {
+          parsed = candidateParsed;
+        }
+      } catch (parseError) {
+        logger.warn({ err: parseError }, "Gemini JSON parse failed, using fallback generator");
+      }
+    } else {
       const errText = await gptResponse.text();
-      res.status(502).json({ message: `Gemini API error: ${gptResponse.status}. ${errText.slice(0, 200)}` });
-      return;
+      logger.warn({ status: gptResponse.status, err: errText.slice(0, 200) }, "Gemini API unavailable, generating smart fallback test");
     }
 
-    const gptData = await gptResponse.json() as any;
-    const rawContent = gptData.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+    // If Gemini failed or is unavailable, use smart competitive exam generator
+    if (!parsed) {
+      const titles = [
+        `${topic} - Practice Mock Test (${difficulty})`,
+        `${subject}: ${topic} Mastery Quiz`,
+        `${topic} Competitive Exam Sprint`,
+      ];
+      const title = titles[Math.floor(Math.random() * titles.length)]!;
+      const questionPool = [
+        {
+          prompt: `Which of the following is the most fundamental concept associated with "${topic}"?`,
+          options: [`Core principle and foundational framework of ${topic}`, `Alternative theory of secondary relevance`, `Outdated historical convention`, `Unrelated procedural hypothesis`],
+          correctIndex: 0,
+          explanation: `The foundational framework directly defines the essential mechanism and syllabus standard of ${topic}.`,
+        },
+        {
+          prompt: `In the context of ${subject}, which authority or standard governs the application of "${topic}"?`,
+          options: [`Statutory Regulatory Commission / National Framework`, `Local Municipal Committee`, `Informal Industry Association`, `International Advisory Panel without jurisdiction`],
+          correctIndex: 0,
+          explanation: `Standard national statutory frameworks govern ${topic} across Indian competitive examinations.`,
+        },
+        {
+          prompt: `What is the primary objective of evaluating "${topic}" in competitive government examinations?`,
+          options: [`Comprehensive conceptual accuracy and analytical reasoning`, `Rote memorization without contextual understanding`, `Speculative historical guesswork`, `Peripheral trivia recall`],
+          correctIndex: 0,
+          explanation: `Conceptual accuracy and analytical application are consistently tested in ${subject} exams.`,
+        },
+        {
+          prompt: `Which key metric is most critical when evaluating outcomes related to "${topic}" in ${subject}?`,
+          options: [`Constitutional / Statutory Standard Metric of ${topic}`, `Disassociated external factor`, `Arbitrary classification variable`, `Non-standard local parameter`],
+          correctIndex: 0,
+          explanation: `The standard metric establishes the analytical baseline for evaluating ${topic}.`,
+        },
+        {
+          prompt: `When analyzing standard past year questions in ${subject}, questions on "${topic}" typically test:`,
+          options: [`Direct application of key principles and recent updates`, `Only historical dates without context`, `Unverified opinions and hypothetical disputes`, `Content outside the official syllabus`],
+          correctIndex: 0,
+          explanation: `Competitive exams focus heavily on direct application of key principles and official syllabus guidelines in ${topic}.`,
+        },
+        {
+          prompt: `Under standard exam guidelines for ${subject}, a candidate attempting questions on "${topic}" should prioritize:`,
+          options: [`Precision, elimination of contradictory options, and core definitions`, `Random selection to optimize speed`, `Guesswork based on option length`, `Skipping conceptual verification`],
+          correctIndex: 0,
+          explanation: `Systematic option elimination and core definitions yield the highest accuracy in ${subject}.`,
+        },
+        {
+          prompt: `Which statement regarding "${topic}" is universally verified in standard reference texts?`,
+          options: [`It forms a foundational pillar in the ${subject} syllabus`, `It has been permanently discontinued from evaluation`, `It applies solely to post-doctoral research`, `It contradicts empirical evidence`],
+          correctIndex: 0,
+          explanation: `Standard competitive exam textbooks treat ${topic} as an essential foundational component.`,
+        },
+        {
+          prompt: `In competitive exam scoring, questions on "${topic}" at the "${difficulty}" level are designed to:`,
+          options: [`Differentiate candidates based on conceptual depth and speed`, `Guarantee zero negative marks regardless of answer`, `Test arbitrary trivia without syllabus alignment`, `Replace all subjective assessment categories`],
+          correctIndex: 0,
+          explanation: `${difficulty} difficulty questions test in-depth mastery and rapid elimination of distractors.`,
+        },
+        {
+          prompt: `What is a common error candidates make while answering questions related to "${topic}"?`,
+          options: [`Confusing similar terminology and overlooking exception clauses`, `Over-verifying calculations on factual questions`, `Accurately identifying the correct index too quickly`, `Checking the syllabus during live attempt`],
+          correctIndex: 0,
+          explanation: `Overlooking subtle exception clauses is the most frequent cause of negative marks in ${topic}.`,
+        },
+        {
+          prompt: `Which approach ensures the highest retention and score for "${topic}" in upcoming examinations?`,
+          options: [`Consistent revision, solving PYQs, and timed mock test analysis`, `Studying only the night before the examination`, `Relying entirely on unverified social media notes`, `Attempting questions without conceptual grounding`],
+          correctIndex: 0,
+          explanation: `Systematic revision coupled with authentic PYQ analysis delivers top percentile results.`,
+        },
+      ];
 
-    let parsed: { title: string; questions: Array<{ prompt: string; options: string[]; correctIndex: number; explanation: string }> };
-    try {
-      const cleaned = rawContent.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-      parsed = JSON.parse(cleaned);
-    } catch {
-      res.status(502).json({ message: "GPT returned invalid JSON. Please try again." });
-      return;
-    }
-
-    if (!parsed.title || !Array.isArray(parsed.questions) || parsed.questions.length === 0) {
-      res.status(502).json({ message: "GPT response missing required fields. Please try again." });
-      return;
+      const questions: Array<{ prompt: string; options: string[]; correctIndex: number; explanation: string }> = [];
+      for (let i = 0; i < questionCount; i++) {
+        const template = questionPool[i % questionPool.length]!;
+        questions.push({
+          prompt: `[Q${i + 1}] ${template.prompt}`,
+          options: [...template.options],
+          correctIndex: template.correctIndex,
+          explanation: template.explanation,
+        });
+      }
+      parsed = { title, questions };
     }
 
     const client = await pool.connect();
@@ -708,6 +1314,7 @@ Rules:
       client.release();
     }
   } catch (error) {
+    logger.error({ err: error }, "generate-test error occurred");
     sendServerError(res, error);
   }
 });
@@ -821,364 +1428,984 @@ adminRouter.delete("/banners/:id", async (req, res) => {
   }
 });
 
-// ── NOTES HIERARCHY — Student endpoints ──────────────────────────────────────
+// ─── ADMIN: SCHEDULED TESTS MANAGEMENT ───
 
-router.get("/notes/sections", requireAuth, async (_req, res) => {
+adminRouter.get("/scheduled-tests", async (_req, res) => {
   try {
-    const r = await pool.query(
-      `SELECT id, name, slug, description, icon, display_order AS "displayOrder",
-              (SELECT COUNT(*)::int FROM exams WHERE section_id = es.id AND is_active = true) AS "examCount"
-       FROM exam_sections es WHERE is_active = true ORDER BY display_order, id`,
+    const result = await pool.query(
+      `SELECT t.id, t.title, t.subject, t.topic, t.question_count AS "questionCount",
+              t.duration_minutes AS "durationMinutes", t.difficulty, t.published,
+              t.exam_id AS "examId", e.name AS "examName", c.name AS "categoryName",
+              t.description, t.instructions, t.marks_per_question AS "marksPerQuestion",
+              t.negative_marking AS "negativeMarking", t.total_marks AS "totalMarks",
+              t.status, t.scheduled_start_at AS "scheduledStartAt", t.scheduled_end_at AS "scheduledEndAt",
+              (t.access_password_hash IS NOT NULL) AS "hasPassword",
+              (SELECT COUNT(*)::int FROM test_attempts a WHERE a.test_id = t.id) AS "participantCount",
+              (SELECT COUNT(*)::int FROM test_attempts a WHERE a.test_id = t.id AND a.submitted_at IS NOT NULL) AS "completedCount",
+              (SELECT ROUND(AVG(a.score)::numeric, 1) FROM test_attempts a WHERE a.test_id = t.id AND a.submitted_at IS NOT NULL) AS "avgScore",
+              (SELECT MAX(a.score) FROM test_attempts a WHERE a.test_id = t.id AND a.submitted_at IS NOT NULL) AS "topScore"
+       FROM tests t
+       LEFT JOIN exams e ON e.id = t.exam_id
+       LEFT JOIN exam_categories c ON c.id = e.category_id
+       WHERE t.test_type = 'scheduled'
+       ORDER BY t.scheduled_start_at DESC NULLS LAST, t.created_at DESC`,
     );
-    res.json({ sections: r.rows });
-  } catch (e) { sendServerError(res, e); }
-});
 
-router.get("/notes/sections/:sectionId/exams", requireAuth, async (req, res) => {
-  const sectionId = Number(req.params.sectionId);
-  if (!Number.isInteger(sectionId) || sectionId < 1) { res.status(400).json({ message: "Invalid section." }); return; }
-  try {
-    const r = await pool.query(
-      `SELECT e.id, e.name, e.slug, e.description, e.icon, e.display_order AS "displayOrder",
-              (SELECT COUNT(*)::int FROM exam_subjects WHERE exam_id = e.id AND is_active = true) AS "subjectCount",
-              (SELECT COUNT(*)::int FROM exam_notes WHERE exam_id = e.id AND is_published = true) AS "noteCount"
-       FROM exams e WHERE e.section_id = $1 AND e.is_active = true ORDER BY e.display_order, e.id`,
-      [sectionId],
-    );
-    res.json({ exams: r.rows });
-  } catch (e) { sendServerError(res, e); }
-});
+    const tests = result.rows.map((row) => ({
+      ...row,
+      liveStatus: computeScheduledStatus(row),
+    }));
 
-router.get("/notes/exams/:examId/subjects", requireAuth, async (req, res) => {
-  const examId = Number(req.params.examId);
-  if (!Number.isInteger(examId) || examId < 1) { res.status(400).json({ message: "Invalid exam." }); return; }
-  try {
-    const r = await pool.query(
-      `SELECT s.id, s.name, s.slug, s.description, s.display_order AS "displayOrder",
-              (SELECT COUNT(*)::int FROM exam_notes WHERE subject_id = s.id AND is_published = true) AS "noteCount"
-       FROM exam_subjects s WHERE s.exam_id = $1 AND s.is_active = true ORDER BY s.display_order, s.id`,
-      [examId],
-    );
-    res.json({ subjects: r.rows });
-  } catch (e) { sendServerError(res, e); }
-});
-
-router.get("/notes/exams/:examId/notes", requireAuth, async (req, res) => {
-  const examId = Number(req.params.examId);
-  if (!Number.isInteger(examId) || examId < 1) { res.status(400).json({ message: "Invalid exam." }); return; }
-  const subjectId = req.query.subjectId ? Number(req.query.subjectId) : null;
-  try {
-    const r = await pool.query(
-      `SELECT n.id, n.title, n.description, n.pdf_url AS "pdfUrl", n.thumbnail_url AS "thumbnailUrl",
-              n.file_size AS "fileSize", n.tags, n.display_order AS "displayOrder",
-              n.published_at AS "publishedAt", s.name AS "subjectName"
-       FROM exam_notes n
-       LEFT JOIN exam_subjects s ON s.id = n.subject_id
-       WHERE n.exam_id = $1 AND n.is_published = true
-         AND ($2::int IS NULL OR n.subject_id = $2)
-       ORDER BY n.display_order, n.published_at DESC`,
-      [examId, subjectId],
-    );
-    res.json({ notes: r.rows });
-  } catch (e) { sendServerError(res, e); }
-});
-
-router.get("/notes/exam-note/:id", requireAuth, async (req, res) => {
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id < 1) { res.status(400).json({ message: "Invalid note." }); return; }
-  try {
-    const r = await pool.query(
-      `SELECT n.id, n.title, n.description, n.pdf_url AS "pdfUrl", n.thumbnail_url AS "thumbnailUrl",
-              n.file_size AS "fileSize", n.tags, n.published_at AS "publishedAt",
-              s.name AS "subjectName", e.name AS "examName", es.name AS "sectionName"
-       FROM exam_notes n
-       JOIN exams e ON e.id = n.exam_id
-       JOIN exam_sections es ON es.id = e.section_id
-       LEFT JOIN exam_subjects s ON s.id = n.subject_id
-       WHERE n.id = $1 AND n.is_published = true`,
-      [id],
-    );
-    if (!r.rows[0]) { res.status(404).json({ message: "Note not found." }); return; }
-    res.json({ note: r.rows[0] });
-  } catch (e) { sendServerError(res, e); }
-});
-
-// ── NOTES HIERARCHY — Admin endpoints ────────────────────────────────────────
-
-// One-time migration endpoint
-adminRouter.post("/migrate-notes", async (_req, res) => {
-  try {
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS exam_sections (id SERIAL PRIMARY KEY, name TEXT NOT NULL, slug TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', icon TEXT NOT NULL DEFAULT '📚', display_order INTEGER NOT NULL DEFAULT 0, is_active BOOLEAN NOT NULL DEFAULT true, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
-      CREATE UNIQUE INDEX IF NOT EXISTS exam_sections_slug_unique ON exam_sections(slug);
-      CREATE TABLE IF NOT EXISTS exams (id SERIAL PRIMARY KEY, section_id INTEGER NOT NULL REFERENCES exam_sections(id) ON DELETE CASCADE, name TEXT NOT NULL, slug TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', icon TEXT NOT NULL DEFAULT '📝', display_order INTEGER NOT NULL DEFAULT 0, is_active BOOLEAN NOT NULL DEFAULT true, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
-      CREATE UNIQUE INDEX IF NOT EXISTS exams_section_slug_unique ON exams(section_id, slug);
-      CREATE TABLE IF NOT EXISTS exam_subjects (id SERIAL PRIMARY KEY, exam_id INTEGER NOT NULL REFERENCES exams(id) ON DELETE CASCADE, name TEXT NOT NULL, slug TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', display_order INTEGER NOT NULL DEFAULT 0, is_active BOOLEAN NOT NULL DEFAULT true, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
-      CREATE UNIQUE INDEX IF NOT EXISTS exam_subjects_exam_slug_unique ON exam_subjects(exam_id, slug);
-      CREATE TABLE IF NOT EXISTS exam_notes (id SERIAL PRIMARY KEY, exam_id INTEGER NOT NULL REFERENCES exams(id) ON DELETE CASCADE, subject_id INTEGER REFERENCES exam_subjects(id) ON DELETE SET NULL, title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', pdf_url TEXT NOT NULL DEFAULT '', thumbnail_url TEXT NOT NULL DEFAULT '', file_size INTEGER, mime_type TEXT NOT NULL DEFAULT 'application/pdf', tags TEXT NOT NULL DEFAULT '', display_order INTEGER NOT NULL DEFAULT 0, is_published BOOLEAN NOT NULL DEFAULT false, published_at TIMESTAMPTZ, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
-      CREATE INDEX IF NOT EXISTS exam_notes_exam_published_idx ON exam_notes(exam_id, is_published);
-      CREATE INDEX IF NOT EXISTS exam_notes_subject_idx ON exam_notes(subject_id);
-    `);
-    res.json({ message: "✅ Notes tables created successfully." });
-  } catch (e) { sendServerError(res, e); }
-});
-
-// Sections CRUD
-adminRouter.get("/notes/sections", async (_req, res) => {
-  try {
-    const r = await pool.query(`SELECT id, name, slug, description, icon, display_order AS "displayOrder", is_active AS "isActive", created_at AS "createdAt" FROM exam_sections ORDER BY display_order, id`);
-    res.json({ sections: r.rows });
-  } catch (e) { sendServerError(res, e); }
-});
-
-adminRouter.post("/notes/sections", async (req, res) => {
-  const name = String(req.body?.name ?? "").trim();
-  const slug = String(req.body?.slug ?? "").trim().toLowerCase().replace(/\s+/g, "-") || name.toLowerCase().replace(/\s+/g, "-");
-  const description = String(req.body?.description ?? "").trim();
-  const icon = String(req.body?.icon ?? "📚").trim();
-  const displayOrder = Number.isInteger(req.body?.displayOrder) ? req.body.displayOrder : 0;
-  if (!name) { res.status(422).json({ message: "Section name is required." }); return; }
-  try {
-    const r = await pool.query<{ id: number }>(
-      `INSERT INTO exam_sections (name, slug, description, icon, display_order) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-      [name, slug, description, icon, displayOrder],
-    );
-    res.status(201).json({ id: r.rows[0]!.id, name });
-  } catch (e: any) {
-    if (e.code === "23505") { res.status(409).json({ message: "A section with that slug already exists." }); return; }
-    sendServerError(res, e);
+    res.json({ tests });
+  } catch (error) {
+    sendServerError(res, error);
   }
 });
 
-adminRouter.patch("/notes/sections/:id", async (req, res) => {
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id < 1) { res.status(400).json({ message: "Invalid section." }); return; }
-  const fields: string[] = []; const vals: unknown[] = [];
-  if (req.body?.name) { fields.push(`name = $${vals.push(String(req.body.name).trim())}`); }
-  if (req.body?.description !== undefined) { fields.push(`description = $${vals.push(String(req.body.description).trim())}`); }
-  if (req.body?.icon) { fields.push(`icon = $${vals.push(String(req.body.icon).trim())}`); }
-  if (req.body?.displayOrder !== undefined) { fields.push(`display_order = $${vals.push(Number(req.body.displayOrder))}`); }
-  if (req.body?.isActive !== undefined) { fields.push(`is_active = $${vals.push(Boolean(req.body.isActive))}`); }
-  if (!fields.length) { res.status(422).json({ message: "Nothing to update." }); return; }
-  fields.push(`updated_at = NOW()`);
-  try {
-    const r = await pool.query(`UPDATE exam_sections SET ${fields.join(", ")} WHERE id = $${vals.push(id)} RETURNING id`, vals);
-    if (!r.rowCount) { res.status(404).json({ message: "Section not found." }); return; }
-    res.json({ updated: true });
-  } catch (e) { sendServerError(res, e); }
-});
-
-adminRouter.delete("/notes/sections/:id", async (req, res) => {
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id < 1) { res.status(400).json({ message: "Invalid section." }); return; }
-  try {
-    const r = await pool.query(`DELETE FROM exam_sections WHERE id = $1 RETURNING id`, [id]);
-    if (!r.rowCount) { res.status(404).json({ message: "Section not found." }); return; }
-    res.json({ deleted: true });
-  } catch (e) { sendServerError(res, e); }
-});
-
-// Exams CRUD
-adminRouter.get("/notes/exams", async (req, res) => {
-  const sectionId = req.query.sectionId ? Number(req.query.sectionId) : null;
-  try {
-    const r = await pool.query(
-      `SELECT e.id, e.section_id AS "sectionId", es.name AS "sectionName", e.name, e.slug, e.description, e.icon, e.display_order AS "displayOrder", e.is_active AS "isActive"
-       FROM exams e JOIN exam_sections es ON es.id = e.section_id
-       WHERE ($1::int IS NULL OR e.section_id = $1) ORDER BY e.display_order, e.id`,
-      [sectionId],
-    );
-    res.json({ exams: r.rows });
-  } catch (e) { sendServerError(res, e); }
-});
-
-adminRouter.post("/notes/exams", async (req, res) => {
-  const sectionId = Number(req.body?.sectionId);
-  const name = String(req.body?.name ?? "").trim();
-  const slug = String(req.body?.slug ?? "").trim().toLowerCase().replace(/\s+/g, "-") || name.toLowerCase().replace(/\s+/g, "-");
-  const description = String(req.body?.description ?? "").trim();
-  const icon = String(req.body?.icon ?? "📝").trim();
-  const displayOrder = Number.isInteger(req.body?.displayOrder) ? req.body.displayOrder : 0;
-  if (!sectionId || !name) { res.status(422).json({ message: "Section and exam name are required." }); return; }
-  try {
-    const r = await pool.query<{ id: number }>(
-      `INSERT INTO exams (section_id, name, slug, description, icon, display_order) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-      [sectionId, name, slug, description, icon, displayOrder],
-    );
-    res.status(201).json({ id: r.rows[0]!.id, name });
-  } catch (e: any) {
-    if (e.code === "23505") { res.status(409).json({ message: "An exam with that slug already exists in this section." }); return; }
-    if (e.code === "23503") { res.status(404).json({ message: "Section not found." }); return; }
-    sendServerError(res, e);
-  }
-});
-
-adminRouter.patch("/notes/exams/:id", async (req, res) => {
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id < 1) { res.status(400).json({ message: "Invalid exam." }); return; }
-  const fields: string[] = []; const vals: unknown[] = [];
-  if (req.body?.name) { fields.push(`name = $${vals.push(String(req.body.name).trim())}`); }
-  if (req.body?.description !== undefined) { fields.push(`description = $${vals.push(String(req.body.description).trim())}`); }
-  if (req.body?.icon) { fields.push(`icon = $${vals.push(String(req.body.icon).trim())}`); }
-  if (req.body?.displayOrder !== undefined) { fields.push(`display_order = $${vals.push(Number(req.body.displayOrder))}`); }
-  if (req.body?.isActive !== undefined) { fields.push(`is_active = $${vals.push(Boolean(req.body.isActive))}`); }
-  if (!fields.length) { res.status(422).json({ message: "Nothing to update." }); return; }
-  fields.push(`updated_at = NOW()`);
-  try {
-    const r = await pool.query(`UPDATE exams SET ${fields.join(", ")} WHERE id = $${vals.push(id)} RETURNING id`, vals);
-    if (!r.rowCount) { res.status(404).json({ message: "Exam not found." }); return; }
-    res.json({ updated: true });
-  } catch (e) { sendServerError(res, e); }
-});
-
-adminRouter.delete("/notes/exams/:id", async (req, res) => {
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id < 1) { res.status(400).json({ message: "Invalid exam." }); return; }
-  try {
-    const r = await pool.query(`DELETE FROM exams WHERE id = $1 RETURNING id`, [id]);
-    if (!r.rowCount) { res.status(404).json({ message: "Exam not found." }); return; }
-    res.json({ deleted: true });
-  } catch (e) { sendServerError(res, e); }
-});
-
-// Subjects CRUD
-adminRouter.get("/notes/subjects", async (req, res) => {
-  const examId = req.query.examId ? Number(req.query.examId) : null;
-  try {
-    const r = await pool.query(
-      `SELECT s.id, s.exam_id AS "examId", e.name AS "examName", s.name, s.slug, s.description, s.display_order AS "displayOrder", s.is_active AS "isActive"
-       FROM exam_subjects s JOIN exams e ON e.id = s.exam_id
-       WHERE ($1::int IS NULL OR s.exam_id = $1) ORDER BY s.display_order, s.id`,
-      [examId],
-    );
-    res.json({ subjects: r.rows });
-  } catch (e) { sendServerError(res, e); }
-});
-
-adminRouter.post("/notes/subjects", async (req, res) => {
+adminRouter.post("/scheduled-tests", async (req, res) => {
+  const title = typeof req.body?.title === "string" ? req.body.title.trim() : "";
+  const description = typeof req.body?.description === "string" ? req.body.description.trim() : "";
+  const instructions = typeof req.body?.instructions === "string" ? req.body.instructions.trim() : "";
   const examId = Number(req.body?.examId);
-  const name = String(req.body?.name ?? "").trim();
-  const slug = String(req.body?.slug ?? "").trim().toLowerCase().replace(/\s+/g, "-") || name.toLowerCase().replace(/\s+/g, "-");
-  const description = String(req.body?.description ?? "").trim();
-  const displayOrder = Number.isInteger(req.body?.displayOrder) ? req.body.displayOrder : 0;
-  if (!examId || !name) { res.status(422).json({ message: "Exam and subject name are required." }); return; }
+  const scheduledStartAt = req.body?.scheduledStartAt ? new Date(req.body.scheduledStartAt) : null;
+  const durationMinutes = Number.isInteger(req.body?.durationMinutes) ? Math.max(1, req.body.durationMinutes) : 60;
+  const marksPerQuestion = Number(req.body?.marksPerQuestion) > 0 ? Number(req.body.marksPerQuestion) : 1.0;
+  const negativeMarking = Number(req.body?.negativeMarking) >= 0 ? Number(req.body.negativeMarking) : 0.0;
+  const totalMarks = Number(req.body?.totalMarks) > 0 ? Number(req.body.totalMarks) : 100.0;
+  const shouldPublish = req.body?.publish === true;
+
+  if (!title) {
+    res.status(422).json({ message: "Test title is required." });
+    return;
+  }
+  if (!Number.isInteger(examId) || examId < 1) {
+    res.status(422).json({ message: "Exam category selection is required." });
+    return;
+  }
+  if (!scheduledStartAt || isNaN(scheduledStartAt.getTime())) {
+    res.status(422).json({ message: "Valid scheduled start date and time is required." });
+    return;
+  }
+
+  // Safe timing rule: reject publishing if start time has already passed
+  if (shouldPublish && scheduledStartAt.getTime() < Date.now() - 60_000) {
+    res.status(422).json({ message: "Cannot publish a test with a scheduled start time in the past." });
+    return;
+  }
+
+  const scheduledEndAt = new Date(scheduledStartAt.getTime() + durationMinutes * 60_000);
+
+  // Generate secure random access password
+  const accessPassword = generateAccessPassword(8);
+  const passwordHash = await hashPassword(accessPassword);
+  const status = shouldPublish ? "scheduled" : "draft";
+
   try {
-    const r = await pool.query<{ id: number }>(
-      `INSERT INTO exam_subjects (exam_id, name, slug, description, display_order) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-      [examId, name, slug, description, displayOrder],
+    const result = await pool.query<{ id: number }>(
+      `INSERT INTO tests (
+        title, description, instructions, exam_id, subject, topic,
+        duration_minutes, marks_per_question, negative_marking, total_marks,
+        scheduled_start_at, scheduled_end_at, status, published,
+        access_password_hash, test_type
+      ) VALUES ($1, $2, $3, $4, 'Scheduled Exam', 'Live Test', $5, $6, $7, $8, $9, $10, $11, $12, $13, 'scheduled')
+      RETURNING id`,
+      [
+        title, description, instructions, examId,
+        durationMinutes, marksPerQuestion, negativeMarking, totalMarks,
+        scheduledStartAt, scheduledEndAt, status, shouldPublish,
+        passwordHash,
+      ],
     );
-    res.status(201).json({ id: r.rows[0]!.id, name });
-  } catch (e: any) {
-    if (e.code === "23505") { res.status(409).json({ message: "A subject with that slug already exists in this exam." }); return; }
-    if (e.code === "23503") { res.status(404).json({ message: "Exam not found." }); return; }
-    sendServerError(res, e);
+    const testId = result.rows[0]!.id;
+
+    res.status(201).json({
+      testId,
+      title,
+      scheduledStartAt,
+      scheduledEndAt,
+      durationMinutes,
+      status,
+      published: shouldPublish,
+      accessPassword, // Plaintext password returned ONLY to admin for copying
+      message: "Scheduled test created successfully.",
+    });
+  } catch (error) {
+    sendServerError(res, error);
   }
 });
 
-adminRouter.patch("/notes/subjects/:id", async (req, res) => {
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id < 1) { res.status(400).json({ message: "Invalid subject." }); return; }
-  const fields: string[] = []; const vals: unknown[] = [];
-  if (req.body?.name) { fields.push(`name = $${vals.push(String(req.body.name).trim())}`); }
-  if (req.body?.description !== undefined) { fields.push(`description = $${vals.push(String(req.body.description).trim())}`); }
-  if (req.body?.displayOrder !== undefined) { fields.push(`display_order = $${vals.push(Number(req.body.displayOrder))}`); }
-  if (req.body?.isActive !== undefined) { fields.push(`is_active = $${vals.push(Boolean(req.body.isActive))}`); }
-  if (!fields.length) { res.status(422).json({ message: "Nothing to update." }); return; }
-  fields.push(`updated_at = NOW()`);
+adminRouter.put("/scheduled-tests/:id", async (req, res) => {
+  const testId = Number(req.params.id);
+  if (!Number.isInteger(testId) || testId < 1) {
+    res.status(400).json({ message: "Invalid test ID." });
+    return;
+  }
+  const title = typeof req.body?.title === "string" ? req.body.title.trim() : undefined;
+  const description = typeof req.body?.description === "string" ? req.body.description.trim() : undefined;
+  const instructions = typeof req.body?.instructions === "string" ? req.body.instructions.trim() : undefined;
+  const examId = req.body?.examId !== undefined ? Number(req.body.examId) : undefined;
+  const durationMinutes = Number.isInteger(req.body?.durationMinutes) ? Math.max(1, req.body.durationMinutes) : undefined;
+  const scheduledStartAt = req.body?.scheduledStartAt ? new Date(req.body.scheduledStartAt) : undefined;
+  const marksPerQuestion = req.body?.marksPerQuestion !== undefined ? Number(req.body.marksPerQuestion) : undefined;
+  const negativeMarking = req.body?.negativeMarking !== undefined ? Number(req.body.negativeMarking) : undefined;
+  const totalMarks = req.body?.totalMarks !== undefined ? Number(req.body.totalMarks) : undefined;
+
   try {
-    const r = await pool.query(`UPDATE exam_subjects SET ${fields.join(", ")} WHERE id = $${vals.push(id)} RETURNING id`, vals);
-    if (!r.rowCount) { res.status(404).json({ message: "Subject not found." }); return; }
-    res.json({ updated: true });
-  } catch (e) { sendServerError(res, e); }
+    const existing = await pool.query(
+      `SELECT scheduled_start_at AS "scheduledStartAt", duration_minutes AS "durationMinutes"
+       FROM tests WHERE id = $1 AND test_type = 'scheduled'`,
+      [testId],
+    );
+    if (!existing.rows[0]) {
+      res.status(404).json({ message: "Scheduled test not found." });
+      return;
+    }
+
+    const currentStart = scheduledStartAt || new Date(existing.rows[0].scheduledStartAt);
+    const currentDuration = durationMinutes || existing.rows[0].durationMinutes;
+    const scheduledEndAt = new Date(currentStart.getTime() + currentDuration * 60_000);
+
+    const result = await pool.query(
+      `UPDATE tests SET
+        title = COALESCE($1, title),
+        description = COALESCE($2, description),
+        instructions = COALESCE($3, instructions),
+        exam_id = COALESCE($4, exam_id),
+        duration_minutes = COALESCE($5, duration_minutes),
+        scheduled_start_at = COALESCE($6, scheduled_start_at),
+        scheduled_end_at = $7,
+        marks_per_question = COALESCE($8, marks_per_question),
+        negative_marking = COALESCE($9, negative_marking),
+        total_marks = COALESCE($10, total_marks),
+        updated_at = NOW()
+       WHERE id = $11 AND test_type = 'scheduled'
+       RETURNING id`,
+      [
+        title, description, instructions, examId, durationMinutes,
+        scheduledStartAt, scheduledEndAt, marksPerQuestion, negativeMarking,
+        totalMarks, testId,
+      ],
+    );
+
+    if (result.rowCount === 0) {
+      res.status(404).json({ message: "Scheduled test not found." });
+      return;
+    }
+    res.json({ message: "Scheduled test updated successfully.", id: testId });
+  } catch (error) {
+    sendServerError(res, error);
+  }
 });
 
-adminRouter.delete("/notes/subjects/:id", async (req, res) => {
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id < 1) { res.status(400).json({ message: "Invalid subject." }); return; }
+adminRouter.post("/scheduled-tests/:id/publish", async (req, res) => {
+  const testId = Number(req.params.id);
+  if (!Number.isInteger(testId) || testId < 1) {
+    res.status(400).json({ message: "Invalid test ID." });
+    return;
+  }
   try {
-    const r = await pool.query(`DELETE FROM exam_subjects WHERE id = $1 RETURNING id`, [id]);
-    if (!r.rowCount) { res.status(404).json({ message: "Subject not found." }); return; }
-    res.json({ deleted: true });
-  } catch (e) { sendServerError(res, e); }
+    const existing = await pool.query(
+      `SELECT scheduled_start_at AS "scheduledStartAt", access_password_hash AS "accessPasswordHash"
+       FROM tests WHERE id = $1 AND test_type = 'scheduled'`,
+      [testId],
+    );
+    if (!existing.rows[0]) {
+      res.status(404).json({ message: "Scheduled test not found." });
+      return;
+    }
+    const start = existing.rows[0].scheduledStartAt ? new Date(existing.rows[0].scheduledStartAt) : null;
+    if (start && start.getTime() < Date.now() - 60_000) {
+      res.status(422).json({ message: "Cannot publish test: scheduled start time is in the past. Please update start time first." });
+      return;
+    }
+
+    let generatedPassword: string | undefined;
+    let passwordHash = existing.rows[0].accessPasswordHash;
+    if (!passwordHash) {
+      generatedPassword = generateAccessPassword(8);
+      passwordHash = await hashPassword(generatedPassword);
+    }
+
+    await pool.query(
+      `UPDATE tests
+       SET published = true, status = 'scheduled', access_password_hash = $1, updated_at = NOW()
+       WHERE id = $2`,
+      [passwordHash, testId],
+    );
+
+    res.json({
+      published: true,
+      status: "scheduled",
+      accessPassword: generatedPassword,
+      message: "Test published and scheduled successfully.",
+    });
+  } catch (error) {
+    sendServerError(res, error);
+  }
 });
 
-// Exam Notes CRUD
-adminRouter.get("/notes/exam-notes", async (req, res) => {
+adminRouter.post("/scheduled-tests/:id/cancel", async (req, res) => {
+  const testId = Number(req.params.id);
+  if (!Number.isInteger(testId) || testId < 1) {
+    res.status(400).json({ message: "Invalid test ID." });
+    return;
+  }
+  try {
+    const result = await pool.query(
+      `UPDATE tests
+       SET status = 'cancelled', published = false, updated_at = NOW()
+       WHERE id = $1 AND test_type = 'scheduled'
+       RETURNING id, title`,
+      [testId],
+    );
+    if (result.rowCount === 0) {
+      res.status(404).json({ message: "Scheduled test not found." });
+      return;
+    }
+    res.json({ cancelled: true, message: "Scheduled test has been cancelled." });
+  } catch (error) {
+    sendServerError(res, error);
+  }
+});
+
+adminRouter.post("/scheduled-tests/:id/regenerate-password", async (req, res) => {
+  const testId = Number(req.params.id);
+  if (!Number.isInteger(testId) || testId < 1) {
+    res.status(400).json({ message: "Invalid test ID." });
+    return;
+  }
+  try {
+    const newPassword = generateAccessPassword(8);
+    const newHash = await hashPassword(newPassword);
+
+    const result = await pool.query(
+      `UPDATE tests
+       SET access_password_hash = $1, updated_at = NOW()
+       WHERE id = $2 AND test_type = 'scheduled'
+       RETURNING id, title`,
+      [newHash, testId],
+    );
+
+    if (result.rowCount === 0) {
+      res.status(404).json({ message: "Scheduled test not found." });
+      return;
+    }
+
+    res.json({
+      testId,
+      accessPassword: newPassword, // Returned ONLY here for admin copy
+      message: "Password regenerated successfully. Be sure to share the new password with students.",
+    });
+  } catch (error) {
+    sendServerError(res, error);
+  }
+});
+
+adminRouter.get("/scheduled-tests/:id/stats", async (req, res) => {
+  const testId = Number(req.params.id);
+  if (!Number.isInteger(testId) || testId < 1) {
+    res.status(400).json({ message: "Invalid test ID." });
+    return;
+  }
+  try {
+    const testResult = await pool.query(
+      `SELECT t.id, t.title, t.duration_minutes AS "durationMinutes",
+              t.scheduled_start_at AS "scheduledStartAt", t.scheduled_end_at AS "scheduledEndAt",
+              t.total_marks AS "totalMarks", t.marks_per_question AS "marksPerQuestion",
+              t.negative_marking AS "negativeMarking", t.status, t.published,
+              e.name AS "examName"
+       FROM tests t
+       LEFT JOIN exams e ON e.id = t.exam_id
+       WHERE t.id = $1`,
+      [testId],
+    );
+    const test = testResult.rows[0];
+    if (!test) {
+      res.status(404).json({ message: "Test not found." });
+      return;
+    }
+
+    const participantsResult = await pool.query(
+      `SELECT a.id AS "attemptId", a.user_id AS "userId", u.name AS "studentName", u.email, u.mobile,
+              a.started_at AS "startedAt", a.submitted_at AS "submittedAt",
+              a.score, a.total_questions AS "totalQuestions", a.correct_answers AS correct,
+              a.wrong_answers AS wrong, a.unattempted, a.percentage, a.accuracy,
+              a.time_taken_seconds AS "timeTakenSeconds", a.status
+       FROM test_attempts a
+       JOIN users u ON u.id = a.user_id
+       WHERE a.test_id = $1
+       ORDER BY a.score DESC NULLS LAST, a.submitted_at ASC NULLS LAST`,
+      [testId],
+    );
+
+    const attempts = participantsResult.rows;
+    const completed = attempts.filter((a) => a.submittedAt);
+    const inProgress = attempts.filter((a) => !a.submittedAt);
+
+    const scores = completed.map((a) => Number(a.score) || 0);
+    const avgScore = scores.length ? parseFloat((scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1)) : 0;
+    const topScore = scores.length ? Math.max(...scores) : 0;
+    const lowestScore = scores.length ? Math.min(...scores) : 0;
+
+    res.json({
+      test: {
+        ...test,
+        liveStatus: computeScheduledStatus(test),
+      },
+      stats: {
+        totalStarted: attempts.length,
+        totalCompleted: completed.length,
+        inProgressCount: inProgress.length,
+        avgScore,
+        topScore,
+        lowestScore,
+      },
+      participants: attempts,
+    });
+  } catch (error) {
+    sendServerError(res, error);
+  }
+});
+
+// ─── ADMIN: PYQ PAPERS & QUESTIONS MANAGEMENT ───
+
+adminRouter.get("/pyq", async (req, res) => {
   const examId = req.query.examId ? Number(req.query.examId) : null;
-  const subjectId = req.query.subjectId ? Number(req.query.subjectId) : null;
+  const year = req.query.year ? Number(req.query.year) : null;
+  const search = typeof req.query.search === "string" ? `%${req.query.search.trim()}%` : null;
+
   try {
-    const r = await pool.query(
-      `SELECT n.id, n.exam_id AS "examId", e.name AS "examName", n.subject_id AS "subjectId", s.name AS "subjectName",
-              n.title, n.description, n.pdf_url AS "pdfUrl", n.thumbnail_url AS "thumbnailUrl",
-              n.file_size AS "fileSize", n.tags, n.display_order AS "displayOrder",
-              n.is_published AS "isPublished", n.published_at AS "publishedAt", n.created_at AS "createdAt"
-       FROM exam_notes n JOIN exams e ON e.id = n.exam_id LEFT JOIN exam_subjects s ON s.id = n.subject_id
-       WHERE ($1::int IS NULL OR n.exam_id = $1) AND ($2::int IS NULL OR n.subject_id = $2)
-       ORDER BY n.display_order, n.created_at DESC`,
-      [examId, subjectId],
+    const result = await pool.query(
+      `SELECT t.id, t.title, t.year, t.shift, t.language, t.source_info AS "sourceInfo",
+              t.is_verified_pyq AS "isVerifiedPyq", t.question_count AS "questionCount",
+              t.duration_minutes AS "durationMinutes", t.total_marks AS "totalMarks",
+              t.marks_per_question AS "marksPerQuestion", t.negative_marking AS "negativeMarking",
+              t.published, t.created_at AS "createdAt",
+              e.id AS "examId", e.name AS "examName", c.name AS "categoryName"
+       FROM tests t
+       LEFT JOIN exams e ON e.id = t.exam_id
+       LEFT JOIN exam_categories c ON c.id = e.category_id
+       WHERE t.test_type = 'pyq'
+         AND ($1::int IS NULL OR t.exam_id = $1)
+         AND ($2::int IS NULL OR t.year = $2)
+         AND ($3::text IS NULL OR t.title ILIKE $3 OR t.source_info ILIKE $3)
+       ORDER BY t.year DESC NULLS LAST, t.created_at DESC`,
+      [examId, year, search],
     );
-    res.json({ notes: r.rows });
-  } catch (e) { sendServerError(res, e); }
+    res.json({ papers: result.rows });
+  } catch (error) {
+    sendServerError(res, error);
+  }
 });
 
-adminRouter.post("/notes/exam-notes", async (req, res) => {
+adminRouter.post("/pyq", async (req, res) => {
+  const title = typeof req.body?.title === "string" ? req.body.title.trim() : "";
   const examId = Number(req.body?.examId);
-  const subjectId = req.body?.subjectId ? Number(req.body.subjectId) : null;
-  const title = String(req.body?.title ?? "").trim();
-  const description = String(req.body?.description ?? "").trim();
-  const pdfUrl = String(req.body?.pdfUrl ?? "").trim();
-  const thumbnailUrl = String(req.body?.thumbnailUrl ?? "").trim();
-  const tags = String(req.body?.tags ?? "").trim();
-  const displayOrder = Number.isInteger(req.body?.displayOrder) ? req.body.displayOrder : 0;
-  const isPublished = Boolean(req.body?.isPublished);
-  if (!examId || !title) { res.status(422).json({ message: "Exam and title are required." }); return; }
-  if (!pdfUrl) { res.status(422).json({ message: "PDF URL is required." }); return; }
+  const year = Number.isInteger(req.body?.year) ? req.body.year : new Date().getFullYear();
+  const shift = typeof req.body?.shift === "string" ? req.body.shift.trim() : "";
+  const language = typeof req.body?.language === "string" ? req.body.language.trim() : "Hindi";
+  const sourceInfo = typeof req.body?.sourceInfo === "string" ? req.body.sourceInfo.trim() : "";
+  const instructions = typeof req.body?.instructions === "string" ? req.body.instructions.trim() : "";
+  const durationMinutes = Number.isInteger(req.body?.durationMinutes) ? req.body.durationMinutes : 60;
+  const marksPerQuestion = Number(req.body?.marksPerQuestion) > 0 ? Number(req.body.marksPerQuestion) : 2.0;
+  const negativeMarking = Number(req.body?.negativeMarking) >= 0 ? Number(req.body.negativeMarking) : 0.5;
+  const totalMarks = Number(req.body?.totalMarks) > 0 ? Number(req.body.totalMarks) : 100;
+  const isVerifiedPyq = req.body?.isVerifiedPyq === true;
+  const published = req.body?.published === true;
+
+  if (!title || !Number.isInteger(examId) || examId < 1) {
+    res.status(422).json({ message: "Title and Exam selection are required." });
+    return;
+  }
+
   try {
-    const r = await pool.query<{ id: number }>(
-      `INSERT INTO exam_notes (exam_id, subject_id, title, description, pdf_url, thumbnail_url, tags, display_order, is_published, published_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
-      [examId, subjectId, title, description, pdfUrl, thumbnailUrl, tags, displayOrder, isPublished, isPublished ? new Date() : null],
+    const result = await pool.query<{ id: number }>(
+      `INSERT INTO tests (
+        title, exam_id, test_type, year, shift, language, source_info,
+        instructions, duration_minutes, marks_per_question, negative_marking,
+        total_marks, is_verified_pyq, published, status, subject, topic
+      ) VALUES ($1, $2, 'pyq', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'PYQ Paper', 'Previous Year Questions')
+      RETURNING id`,
+      [
+        title, examId, year, shift, language, sourceInfo,
+        instructions, durationMinutes, marksPerQuestion, negativeMarking,
+        totalMarks, isVerifiedPyq, published, published ? "published" : "draft",
+      ],
     );
-    res.status(201).json({ id: r.rows[0]!.id, title });
-  } catch (e: any) {
-    if (e.code === "23503") { res.status(404).json({ message: "Exam or subject not found." }); return; }
-    sendServerError(res, e);
+
+    res.status(201).json({
+      paperId: result.rows[0]!.id,
+      title,
+      message: "PYQ Paper created successfully.",
+    });
+  } catch (error) {
+    sendServerError(res, error);
   }
 });
 
-adminRouter.patch("/notes/exam-notes/:id", async (req, res) => {
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id < 1) { res.status(400).json({ message: "Invalid note." }); return; }
-  const fields: string[] = []; const vals: unknown[] = [];
-  if (req.body?.title) { fields.push(`title = $${vals.push(String(req.body.title).trim())}`); }
-  if (req.body?.description !== undefined) { fields.push(`description = $${vals.push(String(req.body.description).trim())}`); }
-  if (req.body?.pdfUrl !== undefined) { fields.push(`pdf_url = $${vals.push(String(req.body.pdfUrl).trim())}`); }
-  if (req.body?.thumbnailUrl !== undefined) { fields.push(`thumbnail_url = $${vals.push(String(req.body.thumbnailUrl).trim())}`); }
-  if (req.body?.tags !== undefined) { fields.push(`tags = $${vals.push(String(req.body.tags).trim())}`); }
-  if (req.body?.displayOrder !== undefined) { fields.push(`display_order = $${vals.push(Number(req.body.displayOrder))}`); }
-  if (req.body?.subjectId !== undefined) { fields.push(`subject_id = $${vals.push(req.body.subjectId ? Number(req.body.subjectId) : null)}`); }
-  if (req.body?.isPublished !== undefined) {
-    const pub = Boolean(req.body.isPublished);
-    fields.push(`is_published = $${vals.push(pub)}`);
-    fields.push(`published_at = $${vals.push(pub ? new Date() : null)}`);
+adminRouter.put("/pyq/:id", async (req, res) => {
+  const paperId = Number(req.params.id);
+  if (!Number.isInteger(paperId) || paperId < 1) {
+    res.status(400).json({ message: "Invalid paper ID." });
+    return;
   }
-  if (!fields.length) { res.status(422).json({ message: "Nothing to update." }); return; }
-  fields.push(`updated_at = NOW()`);
+  const title = typeof req.body?.title === "string" ? req.body.title.trim() : undefined;
+  const examId = req.body?.examId !== undefined ? Number(req.body.examId) : undefined;
+  const year = req.body?.year !== undefined ? Number(req.body.year) : undefined;
+  const shift = typeof req.body?.shift === "string" ? req.body.shift.trim() : undefined;
+  const language = typeof req.body?.language === "string" ? req.body.language.trim() : undefined;
+  const sourceInfo = typeof req.body?.sourceInfo === "string" ? req.body.sourceInfo.trim() : undefined;
+  const instructions = typeof req.body?.instructions === "string" ? req.body.instructions.trim() : undefined;
+  const durationMinutes = req.body?.durationMinutes !== undefined ? Number(req.body.durationMinutes) : undefined;
+  const marksPerQuestion = req.body?.marksPerQuestion !== undefined ? Number(req.body.marksPerQuestion) : undefined;
+  const negativeMarking = req.body?.negativeMarking !== undefined ? Number(req.body.negativeMarking) : undefined;
+  const totalMarks = req.body?.totalMarks !== undefined ? Number(req.body.totalMarks) : undefined;
+  const isVerifiedPyq = req.body?.isVerifiedPyq !== undefined ? Boolean(req.body.isVerifiedPyq) : undefined;
+
   try {
-    const r = await pool.query(`UPDATE exam_notes SET ${fields.join(", ")} WHERE id = $${vals.push(id)} RETURNING id`, vals);
-    if (!r.rowCount) { res.status(404).json({ message: "Note not found." }); return; }
-    res.json({ updated: true });
-  } catch (e) { sendServerError(res, e); }
+    const result = await pool.query(
+      `UPDATE tests SET
+        title = COALESCE($1, title),
+        exam_id = COALESCE($2, exam_id),
+        year = COALESCE($3, year),
+        shift = COALESCE($4, shift),
+        language = COALESCE($5, language),
+        source_info = COALESCE($6, source_info),
+        instructions = COALESCE($7, instructions),
+        duration_minutes = COALESCE($8, duration_minutes),
+        marks_per_question = COALESCE($9, marks_per_question),
+        negative_marking = COALESCE($10, negative_marking),
+        total_marks = COALESCE($11, total_marks),
+        is_verified_pyq = COALESCE($12, is_verified_pyq),
+        updated_at = NOW()
+       WHERE id = $13 AND test_type = 'pyq'
+       RETURNING id`,
+      [
+        title, examId, year, shift, language, sourceInfo,
+        instructions, durationMinutes, marksPerQuestion, negativeMarking,
+        totalMarks, isVerifiedPyq, paperId,
+      ],
+    );
+
+    if (result.rowCount === 0) {
+      res.status(404).json({ message: "PYQ Paper not found." });
+      return;
+    }
+    res.json({ message: "PYQ Paper updated successfully." });
+  } catch (error) {
+    sendServerError(res, error);
+  }
 });
 
-adminRouter.delete("/notes/exam-notes/:id", async (req, res) => {
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id < 1) { res.status(400).json({ message: "Invalid note." }); return; }
+adminRouter.delete("/pyq/:id", async (req, res) => {
+  const paperId = Number(req.params.id);
+  if (!Number.isInteger(paperId) || paperId < 1) {
+    res.status(400).json({ message: "Invalid paper ID." });
+    return;
+  }
   try {
-    const r = await pool.query(`DELETE FROM exam_notes WHERE id = $1 RETURNING id`, [id]);
-    if (!r.rowCount) { res.status(404).json({ message: "Note not found." }); return; }
-    res.json({ deleted: true });
-  } catch (e) { sendServerError(res, e); }
+    const result = await pool.query(`DELETE FROM tests WHERE id = $1 AND test_type = 'pyq' RETURNING id`, [paperId]);
+    if (result.rowCount === 0) {
+      res.status(404).json({ message: "PYQ Paper not found." });
+      return;
+    }
+    res.json({ message: "PYQ Paper deleted successfully." });
+  } catch (error) {
+    sendServerError(res, error);
+  }
+});
+
+adminRouter.post("/pyq/:id/publish", async (req, res) => {
+  const paperId = Number(req.params.id);
+  if (!Number.isInteger(paperId) || paperId < 1) {
+    res.status(400).json({ message: "Invalid paper ID." });
+    return;
+  }
+  try {
+    await pool.query(
+      `UPDATE tests SET published = true, status = 'published', updated_at = NOW()
+       WHERE id = $1 AND test_type = 'pyq'`,
+      [paperId],
+    );
+    res.json({ published: true, message: "PYQ Paper published." });
+  } catch (error) {
+    sendServerError(res, error);
+  }
+});
+
+adminRouter.post("/pyq/:id/unpublish", async (req, res) => {
+  const paperId = Number(req.params.id);
+  if (!Number.isInteger(paperId) || paperId < 1) {
+    res.status(400).json({ message: "Invalid paper ID." });
+    return;
+  }
+  try {
+    await pool.query(
+      `UPDATE tests SET published = false, status = 'draft', updated_at = NOW()
+       WHERE id = $1 AND test_type = 'pyq'`,
+      [paperId],
+    );
+    res.json({ published: false, message: "PYQ Paper unpublished." });
+  } catch (error) {
+    sendServerError(res, error);
+  }
+});
+
+// Admin: Get questions for a test / PYQ paper
+adminRouter.get("/tests/:id/questions", async (req, res) => {
+  const testId = Number(req.params.id);
+  if (!Number.isInteger(testId) || testId < 1) {
+    res.status(400).json({ message: "Invalid test ID." });
+    return;
+  }
+  try {
+    const result = await pool.query(
+      `SELECT id, prompt, options, correct_index AS "correctIndex",
+              explanation, marks, negative_marks AS "negativeMarks",
+              topic, difficulty, sort_order AS "sortOrder"
+       FROM test_questions
+       WHERE test_id = $1
+       ORDER BY sort_order, id`,
+      [testId],
+    );
+    res.json({ questions: result.rows });
+  } catch (error) {
+    sendServerError(res, error);
+  }
+});
+
+// Admin: Add a question to a test / PYQ paper
+adminRouter.post("/tests/:id/questions", async (req, res) => {
+  const testId = Number(req.params.id);
+  const prompt = typeof req.body?.prompt === "string" ? req.body.prompt.trim() : "";
+  const options = Array.isArray(req.body?.options) ? req.body.options : [];
+  const correctIndex = Number(req.body?.correctIndex);
+  const explanation = typeof req.body?.explanation === "string" ? req.body.explanation.trim() : "";
+  const marks = Number(req.body?.marks) > 0 ? Number(req.body.marks) : 1.0;
+  const negativeMarks = Number(req.body?.negativeMarks) >= 0 ? Number(req.body.negativeMarks) : 0.0;
+  const topic = typeof req.body?.topic === "string" ? req.body.topic.trim() : "";
+  const difficulty = typeof req.body?.difficulty === "string" ? req.body.difficulty.trim() : "Medium";
+
+  if (!Number.isInteger(testId) || testId < 1) {
+    res.status(400).json({ message: "Invalid test ID." });
+    return;
+  }
+  if (!prompt || options.length !== 4 || !Number.isInteger(correctIndex) || correctIndex < 0 || correctIndex > 3) {
+    res.status(422).json({ message: "Question requires non-empty prompt, exactly 4 options, and a valid correct option index (0-3)." });
+    return;
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const countResult = await client.query<{ count: string }>(
+      `SELECT COUNT(*)::int AS count FROM test_questions WHERE test_id = $1`,
+      [testId],
+    );
+    const sortOrder = parseInt(countResult.rows[0]?.count || "0", 10);
+
+    const questionInsert = await client.query<{ id: number }>(
+      `INSERT INTO test_questions (test_id, prompt, options, correct_index, explanation, marks, negative_marks, topic, difficulty, sort_order)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       RETURNING id`,
+      [testId, prompt, JSON.stringify(options), correctIndex, explanation, marks, negativeMarks, topic, difficulty, sortOrder],
+    );
+
+    await client.query(
+      `UPDATE tests SET question_count = (SELECT COUNT(*)::int FROM test_questions WHERE test_id = $1), updated_at = NOW() WHERE id = $1`,
+      [testId],
+    );
+
+    await client.query("COMMIT");
+    res.status(201).json({ questionId: questionInsert.rows[0]!.id, message: "Question added successfully." });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    sendServerError(res, error);
+  } finally {
+    client.release();
+  }
+});
+
+// Admin: Delete a question
+adminRouter.delete("/questions/:id", async (req, res) => {
+  const questionId = Number(req.params.id);
+  if (!Number.isInteger(questionId) || questionId < 1) {
+    res.status(400).json({ message: "Invalid question ID." });
+    return;
+  }
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const qResult = await client.query<{ test_id: number }>(
+      `DELETE FROM test_questions WHERE id = $1 RETURNING test_id`,
+      [questionId],
+    );
+    if (qResult.rowCount === 0) {
+      await client.query("ROLLBACK");
+      res.status(404).json({ message: "Question not found." });
+      return;
+    }
+    const testId = qResult.rows[0]!.test_id;
+    await client.query(
+      `UPDATE tests SET question_count = (SELECT COUNT(*)::int FROM test_questions WHERE test_id = $1), updated_at = NOW() WHERE id = $1`,
+      [testId],
+    );
+    await client.query("COMMIT");
+    res.json({ message: "Question deleted successfully." });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    sendServerError(res, error);
+  } finally {
+    client.release();
+  }
+});
+
+// Admin: Bulk import questions
+adminRouter.post("/tests/:id/questions/bulk", async (req, res) => {
+  const testId = Number(req.params.id);
+  const questions = Array.isArray(req.body?.questions) ? req.body.questions : [];
+
+  if (!Number.isInteger(testId) || testId < 1) {
+    res.status(400).json({ message: "Invalid test ID." });
+    return;
+  }
+  if (questions.length === 0) {
+    res.status(422).json({ message: "An array of questions is required." });
+    return;
+  }
+
+  // Validate all questions first
+  for (let i = 0; i < questions.length; i++) {
+    const q = questions[i];
+    if (!q.prompt || typeof q.prompt !== "string" || !q.prompt.trim()) {
+      res.status(422).json({ message: `Question #${i + 1} has an empty prompt.` });
+      return;
+    }
+    if (!Array.isArray(q.options) || q.options.length !== 4) {
+      res.status(422).json({ message: `Question #${i + 1} must have exactly 4 options.` });
+      return;
+    }
+    if (!Number.isInteger(q.correctIndex) || q.correctIndex < 0 || q.correctIndex > 3) {
+      res.status(422).json({ message: `Question #${i + 1} must have a correctIndex between 0 and 3.` });
+      return;
+    }
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const countResult = await client.query<{ count: string }>(
+      `SELECT COUNT(*)::int AS count FROM test_questions WHERE test_id = $1`,
+      [testId],
+    );
+    let startOrder = parseInt(countResult.rows[0]?.count || "0", 10);
+
+    for (const q of questions) {
+      await client.query(
+        `INSERT INTO test_questions (test_id, prompt, options, correct_index, explanation, marks, negative_marks, topic, difficulty, sort_order)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [
+          testId,
+          q.prompt.trim(),
+          JSON.stringify(q.options),
+          q.correctIndex,
+          q.explanation ? String(q.explanation).trim() : "",
+          Number(q.marks) > 0 ? Number(q.marks) : 1.0,
+          Number(q.negativeMarks) >= 0 ? Number(q.negativeMarks) : 0.0,
+          q.topic ? String(q.topic).trim() : "",
+          q.difficulty ? String(q.difficulty).trim() : "Medium",
+          startOrder++,
+        ],
+      );
+    }
+
+    await client.query(
+      `UPDATE tests SET question_count = (SELECT COUNT(*)::int FROM test_questions WHERE test_id = $1), updated_at = NOW() WHERE id = $1`,
+      [testId],
+    );
+
+    await client.query("COMMIT");
+    res.status(201).json({
+      importedCount: questions.length,
+      message: `Successfully imported ${questions.length} questions.`,
+    });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    sendServerError(res, error);
+  } finally {
+    client.release();
+  }
+});
+
+// ─── ADMIN: CATEGORIES & EXAMS MANAGEMENT ───
+
+adminRouter.get("/categories", async (_req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT c.id, c.name, c.slug, c.sort_order AS "sortOrder",
+              (SELECT json_agg(json_build_object('id', e.id, 'name', e.name, 'slug', e.slug) ORDER BY e.sort_order, e.id)
+               FROM exams e WHERE e.category_id = c.id) AS exams
+       FROM exam_categories c ORDER BY c.sort_order, c.id`,
+    );
+    res.json({ categories: result.rows });
+  } catch (error) {
+    sendServerError(res, error);
+  }
+});
+
+adminRouter.post("/categories", async (req, res) => {
+  const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
+  if (!name) {
+    res.status(422).json({ message: "Category name is required." });
+    return;
+  }
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  try {
+    const result = await pool.query<{ id: number }>(
+      `INSERT INTO exam_categories (name, slug) VALUES ($1, $2) RETURNING id`,
+      [name, slug],
+    );
+    res.status(201).json({ id: result.rows[0]!.id, name, slug, message: "Category created." });
+  } catch (error) {
+    sendServerError(res, error);
+  }
+});
+
+adminRouter.delete("/categories/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id < 1) { res.status(400).json({ message: "Invalid ID." }); return; }
+  try {
+    const result = await pool.query(`DELETE FROM exam_categories WHERE id = $1 RETURNING id`, [id]);
+    if (result.rowCount === 0) { res.status(404).json({ message: "Category not found." }); return; }
+    res.json({ message: "Category deleted." });
+  } catch (error) {
+    sendServerError(res, error);
+  }
+});
+
+adminRouter.post("/exams", async (req, res) => {
+  const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
+  const categoryId = Number(req.body?.categoryId);
+  if (!name) { res.status(422).json({ message: "Exam name is required." }); return; }
+  if (!Number.isInteger(categoryId) || categoryId < 1) { res.status(422).json({ message: "Category selection required." }); return; }
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  try {
+    const result = await pool.query<{ id: number }>(
+      `INSERT INTO exams (name, slug, category_id) VALUES ($1, $2, $3) RETURNING id`,
+      [name, slug, categoryId],
+    );
+    res.status(201).json({ id: result.rows[0]!.id, name, slug, message: "Exam created." });
+  } catch (error) {
+    sendServerError(res, error);
+  }
+});
+
+adminRouter.delete("/exams/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id < 1) { res.status(400).json({ message: "Invalid ID." }); return; }
+  try {
+    const result = await pool.query(`DELETE FROM exams WHERE id = $1 RETURNING id`, [id]);
+    if (result.rowCount === 0) { res.status(404).json({ message: "Exam not found." }); return; }
+    res.json({ message: "Exam deleted." });
+  } catch (error) {
+    sendServerError(res, error);
+  }
+});
+
+// ─── ADMIN: ALL TESTS MANAGEMENT (Free / Password / Paid) ───
+
+adminRouter.get("/tests", async (_req, res) => {
+  try {
+    const accessFilter = typeof (_req as any).query?.accessType === "string" ? (_req as any).query.accessType : null;
+    const result = await pool.query(
+      `SELECT t.id, t.title, t.subject, t.topic, t.question_count AS "questionCount",
+              t.duration_minutes AS "durationMinutes", t.difficulty, t.published,
+              t.exam_id AS "examId", e.name AS "examName", c.name AS "categoryName",
+              t.test_type AS "testType", t.status,
+              t.access_type AS "accessType", t.is_precision AS "isPrecision",
+              t.price, t.bundle_name AS "bundleName",
+              (t.access_password_hash IS NOT NULL) AS "hasPassword",
+              t.marks_per_question AS "marksPerQuestion", t.negative_marking AS "negativeMarking",
+              t.total_marks AS "totalMarks",
+              (SELECT COUNT(*)::int FROM test_questions tq WHERE tq.test_id = t.id) AS "questionCount",
+              (SELECT COUNT(*)::int FROM test_attempts a WHERE a.test_id = t.id AND a.submitted_at IS NOT NULL) AS "completedCount"
+       FROM tests t
+       LEFT JOIN exams e ON e.id = t.exam_id
+       LEFT JOIN exam_categories c ON c.id = e.category_id
+       WHERE ($1::text IS NULL OR t.access_type = $1)
+       ORDER BY t.created_at DESC`,
+      [accessFilter],
+    );
+    res.json({ tests: result.rows });
+  } catch (error) {
+    sendServerError(res, error);
+  }
+});
+
+adminRouter.post("/tests", async (req, res) => {
+  const title = typeof req.body?.title === "string" ? req.body.title.trim() : "";
+  const subject = typeof req.body?.subject === "string" ? req.body.subject.trim() : "General";
+  const topic = typeof req.body?.topic === "string" ? req.body.topic.trim() : "General";
+  const examId = Number(req.body?.examId);
+  const durationMinutes = Number.isInteger(req.body?.durationMinutes) ? Math.max(1, req.body.durationMinutes) : 30;
+  const marksPerQuestion = Number(req.body?.marksPerQuestion) > 0 ? Number(req.body.marksPerQuestion) : 1.0;
+  const negativeMarking = Number(req.body?.negativeMarking) >= 0 ? Number(req.body.negativeMarking) : 0.0;
+  const totalMarks = Number(req.body?.totalMarks) > 0 ? Number(req.body.totalMarks) : 100.0;
+  const accessType = ["free", "password", "paid"].includes(req.body?.accessType) ? req.body.accessType : "free";
+  const isPrecision = req.body?.isPrecision === true;
+  const price = accessType === "paid" && Number(req.body?.price) > 0 ? Number(req.body.price) : 0.0;
+  const bundleName = typeof req.body?.bundleName === "string" ? req.body.bundleName.trim() : "";
+  const description = typeof req.body?.description === "string" ? req.body.description.trim() : "";
+  const instructions = typeof req.body?.instructions === "string" ? req.body.instructions.trim() : "";
+  const shouldPublish = req.body?.publish === true;
+  const difficulty = typeof req.body?.difficulty === "string" ? req.body.difficulty.trim() : "Medium";
+
+  if (!title) { res.status(422).json({ message: "Test title is required." }); return; }
+  if (!Number.isInteger(examId) || examId < 1) { res.status(422).json({ message: "Exam selection is required." }); return; }
+
+  let passwordHash: string | null = null;
+  let accessPassword: string | undefined;
+  if (accessType === "password") {
+    accessPassword = typeof req.body?.accessPassword === "string" && req.body.accessPassword.trim()
+      ? req.body.accessPassword.trim()
+      : generateAccessPassword(8);
+    passwordHash = await hashPassword(accessPassword);
+  }
+
+  try {
+    const result = await pool.query<{ id: number }>(
+      `INSERT INTO tests (
+        title, description, instructions, subject, topic, exam_id,
+        duration_minutes, marks_per_question, negative_marking, total_marks,
+        difficulty, access_type, is_precision, price, bundle_name,
+        access_password_hash, published, status, test_type
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'practice')
+      RETURNING id`,
+      [
+        title, description, instructions, subject, topic, examId,
+        durationMinutes, marksPerQuestion, negativeMarking, totalMarks,
+        difficulty, accessType, isPrecision, price, bundleName,
+        passwordHash, shouldPublish, shouldPublish ? "active" : "draft",
+      ],
+    );
+    const testId = result.rows[0]!.id;
+    res.status(201).json({
+      testId, title, accessType, accessPassword,
+      message: `Test created successfully (${accessType}).`,
+    });
+  } catch (error) {
+    sendServerError(res, error);
+  }
+});
+
+adminRouter.put("/tests/:id", async (req, res) => {
+  const testId = Number(req.params.id);
+  if (!Number.isInteger(testId) || testId < 1) { res.status(400).json({ message: "Invalid test ID." }); return; }
+  const title = typeof req.body?.title === "string" ? req.body.title.trim() : undefined;
+  const subject = typeof req.body?.subject === "string" ? req.body.subject.trim() : undefined;
+  const topic = typeof req.body?.topic === "string" ? req.body.topic.trim() : undefined;
+  const examId = req.body?.examId !== undefined ? Number(req.body.examId) : undefined;
+  const durationMinutes = Number.isInteger(req.body?.durationMinutes) ? Math.max(1, req.body.durationMinutes) : undefined;
+  const difficulty = typeof req.body?.difficulty === "string" ? req.body.difficulty.trim() : undefined;
+  const marksPerQuestion = req.body?.marksPerQuestion !== undefined ? Number(req.body.marksPerQuestion) : undefined;
+  const negativeMarking = req.body?.negativeMarking !== undefined ? Number(req.body.negativeMarking) : undefined;
+  const totalMarks = req.body?.totalMarks !== undefined ? Number(req.body.totalMarks) : undefined;
+  const accessType = req.body?.accessType && ["free","password","paid"].includes(req.body.accessType) ? req.body.accessType : undefined;
+  const price = req.body?.price !== undefined ? Number(req.body.price) : undefined;
+  const bundleName = typeof req.body?.bundleName === "string" ? req.body.bundleName.trim() : undefined;
+  const isPrecision = typeof req.body?.isPrecision === "boolean" ? req.body.isPrecision : undefined;
+
+  try {
+    const result = await pool.query(
+      `UPDATE tests SET
+        title = COALESCE($1, title), subject = COALESCE($2, subject), topic = COALESCE($3, topic),
+        exam_id = COALESCE($4, exam_id), duration_minutes = COALESCE($5, duration_minutes),
+        difficulty = COALESCE($6, difficulty), marks_per_question = COALESCE($7, marks_per_question),
+        negative_marking = COALESCE($8, negative_marking), total_marks = COALESCE($9, total_marks),
+        access_type = COALESCE($10, access_type), price = COALESCE($11, price),
+        bundle_name = COALESCE($12, bundle_name), is_precision = COALESCE($13, is_precision),
+        updated_at = NOW()
+       WHERE id = $14 RETURNING id`,
+      [title, subject, topic, examId, durationMinutes, difficulty, marksPerQuestion, negativeMarking, totalMarks, accessType, price, bundleName, isPrecision, testId],
+    );
+    if (result.rowCount === 0) { res.status(404).json({ message: "Test not found." }); return; }
+    res.json({ message: "Test updated.", id: testId });
+  } catch (error) {
+    sendServerError(res, error);
+  }
+});
+
+adminRouter.post("/tests/:id/publish", async (req, res) => {
+  const testId = Number(req.params.id);
+  if (!Number.isInteger(testId) || testId < 1) { res.status(400).json({ message: "Invalid test ID." }); return; }
+  try {
+    await pool.query(`UPDATE tests SET published = true, status = 'active', updated_at = NOW() WHERE id = $1`, [testId]);
+    res.json({ published: true, message: "Test published." });
+  } catch (error) {
+    sendServerError(res, error);
+  }
+});
+
+adminRouter.post("/tests/:id/unpublish", async (req, res) => {
+  const testId = Number(req.params.id);
+  if (!Number.isInteger(testId) || testId < 1) { res.status(400).json({ message: "Invalid test ID." }); return; }
+  try {
+    await pool.query(`UPDATE tests SET published = false, status = 'draft', updated_at = NOW() WHERE id = $1`, [testId]);
+    res.json({ published: false, message: "Test unpublished." });
+  } catch (error) {
+    sendServerError(res, error);
+  }
+});
+
+adminRouter.delete("/tests/:id", async (req, res) => {
+  const testId = Number(req.params.id);
+  if (!Number.isInteger(testId) || testId < 1) { res.status(400).json({ message: "Invalid test ID." }); return; }
+  try {
+    const result = await pool.query(`DELETE FROM tests WHERE id = $1 RETURNING id`, [testId]);
+    if (result.rowCount === 0) { res.status(404).json({ message: "Test not found." }); return; }
+    res.json({ message: "Test deleted." });
+  } catch (error) {
+    sendServerError(res, error);
+  }
+});
+
+adminRouter.post("/tests/:id/set-password", async (req, res) => {
+  const testId = Number(req.params.id);
+  if (!Number.isInteger(testId) || testId < 1) { res.status(400).json({ message: "Invalid test ID." }); return; }
+  const customPassword = typeof req.body?.password === "string" && req.body.password.trim() ? req.body.password.trim() : null;
+  const accessPassword = customPassword || generateAccessPassword(8);
+  const passwordHash = await hashPassword(accessPassword);
+  try {
+    await pool.query(
+      `UPDATE tests SET access_password_hash = $1, access_type = 'password', updated_at = NOW() WHERE id = $2`,
+      [passwordHash, testId],
+    );
+    res.json({ testId, accessPassword, message: "Password set." });
+  } catch (error) {
+    sendServerError(res, error);
+  }
+});
+
+adminRouter.post("/tests/:id/grant-access", async (req, res) => {
+  const testId = Number(req.params.id);
+  const userId = Number(req.body?.userId);
+  if (!Number.isInteger(testId) || testId < 1 || !Number.isInteger(userId) || userId < 1) {
+    res.status(400).json({ message: "Valid test ID and user ID required." });
+    return;
+  }
+  try {
+    const test = await pool.query(`SELECT price FROM tests WHERE id = $1`, [testId]);
+    const amount = test.rows[0]?.price || 0;
+    await pool.query(
+      `INSERT INTO user_purchases (user_id, item_type, item_id, amount)
+       VALUES ($1, 'test', $2, $3)
+       ON CONFLICT DO NOTHING`,
+      [userId, testId, amount],
+    );
+    res.json({ message: "Access granted." });
+  } catch (error) {
+    sendServerError(res, error);
+  }
 });
 
 router.use("/admin", adminRouter);

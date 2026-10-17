@@ -41,13 +41,26 @@ testem.log
 .DS_Store
 Thumbs.db
 
-.cursor/rules/nx-rules.mdc
-.github/instructions/nx.instructions.md
-
 # Replit
 .cache/
 .local/
 
-# Environment variables
+# Environment variables — NEVER commit real secrets
 .env
 .env.*
+!.env.example
+
+# Large binary / zip files
+*.zip
+*.tar.gz
+
+# AI agent folders
+.agents/
+.cursor/
+.gemini/
+
+# GitHub-specific rule files
+.cursor/rules/nx-rules.mdc
+.github/instructions/nx.instructions.md
+
+.vercel

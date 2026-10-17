@@ -40,6 +40,29 @@ export interface Note {
   createdAt?: string;
 }
 
+export interface ExamCategory {
+  id: number;
+  name: string;
+  slug: string;
+  description: string;
+  icon: string;
+  sortOrder: number;
+  exams?: Exam[];
+}
+
+export interface Exam {
+  id: number;
+  categoryId: number;
+  categoryName?: string;
+  name: string;
+  slug: string;
+  description: string;
+  sortOrder: number;
+  pyqCount?: number;
+  mockCount?: number;
+  scheduledCount?: number;
+}
+
 export interface TestSummary {
   id: number;
   title: string;
@@ -49,6 +72,33 @@ export interface TestSummary {
   durationMinutes: number;
   difficulty: string;
   attempted?: boolean;
+  activeAttemptId?: number | null;
+  testType?: "practice" | "mock" | "pyq" | "scheduled";
+  description?: string;
+  instructions?: string;
+  marksPerQuestion?: number;
+  negativeMarking?: number;
+  totalMarks?: number;
+  scheduledStartAt?: string | null;
+  scheduledEndAt?: string | null;
+  status?: string;
+  computedStatus?: "draft" | "scheduled" | "live" | "completed" | "cancelled";
+  liveStatus?: "draft" | "scheduled" | "live" | "completed" | "cancelled";
+  examId?: number | null;
+  isPasswordProtected?: boolean;
+  requiresPassword?: boolean;
+  year?: number | null;
+  shift?: string | null;
+  language?: string;
+  sourceInfo?: string;
+  isVerifiedPyq?: boolean;
+  examName?: string;
+  categoryName?: string;
+  accessType?: 'free' | 'password' | 'paid';
+  isPrecision?: boolean;
+  price?: number;
+  bundleName?: string;
+  hasPurchased?: boolean;
 }
 
 export interface HomeData {
@@ -84,18 +134,37 @@ export interface TestQuestion {
   id: number;
   prompt: string;
   options: string[];
+  marks?: number;
+  negativeMarks?: number;
+  topic?: string;
+  difficulty?: string;
+  explanation?: string;
+  correctIndex?: number;
 }
 
 export interface TestAttemptSession {
   attemptId: number;
   startedAt: string;
   deadline: string;
-  test: TestSummary;
+  serverTime?: string;
+  test: {
+    id: number;
+    title: string;
+    subject: string;
+    topic: string;
+    durationMinutes: number;
+    marksPerQuestion?: number;
+    negativeMarking?: number;
+    totalMarks?: number;
+    instructions?: string;
+  };
   questions: TestQuestion[];
+  savedAnswers?: Record<string, number | null>;
 }
 
 export interface AttemptResult {
   id: number;
+  attemptId?: number;
   testId: number;
   testTitle: string;
   startedAt: string;
@@ -108,6 +177,7 @@ export interface AttemptResult {
   percentage: number;
   accuracy: number;
   timeTakenSeconds: number;
+  maxMarks?: number;
 }
 
 export interface AdminStats {
@@ -128,4 +198,82 @@ export interface AdminResult {
   accuracy: number;
   timeTakenSeconds: number;
   submittedAt: string;
+}
+
+export interface ScheduledTestAdmin {
+  id: number;
+  title: string;
+  subject: string;
+  topic: string;
+  questionCount: number;
+  durationMinutes: number;
+  difficulty: string;
+  published: boolean;
+  examId: number;
+  examName?: string;
+  categoryName?: string;
+  description: string;
+  instructions: string;
+  marksPerQuestion: number;
+  negativeMarking: number;
+  totalMarks: number;
+  status: string;
+  liveStatus: "draft" | "scheduled" | "live" | "completed" | "cancelled";
+  scheduledStartAt: string;
+  scheduledEndAt: string;
+  hasPassword: boolean;
+  participantCount: number;
+  completedCount: number;
+  avgScore: number | null;
+  topScore: number | null;
+}
+
+export interface ScheduledTestStatsResponse {
+  test: ScheduledTestAdmin;
+  stats: {
+    totalStarted: number;
+    totalCompleted: number;
+    inProgressCount: number;
+    avgScore: number;
+    topScore: number;
+    lowestScore: number;
+  };
+  participants: Array<{
+    attemptId: number;
+    userId: number;
+    studentName: string;
+    email: string;
+    mobile: string;
+    startedAt: string;
+    submittedAt: string | null;
+    score: number | null;
+    totalQuestions: number;
+    correct: number | null;
+    wrong: number | null;
+    unattempted: number | null;
+    percentage: number | null;
+    accuracy: number | null;
+    timeTakenSeconds: number | null;
+    status: string;
+  }>;
+}
+
+export interface PyqPaperAdmin {
+  id: number;
+  title: string;
+  year: number;
+  shift: string;
+  language: string;
+  sourceInfo: string;
+  isVerifiedPyq: boolean;
+  questionCount: number;
+  durationMinutes: number;
+  totalMarks: number;
+  marksPerQuestion: number;
+  negativeMarking: number;
+  published: boolean;
+  createdAt: string;
+  examId: number;
+  examName?: string;
+  categoryName?: string;
 }

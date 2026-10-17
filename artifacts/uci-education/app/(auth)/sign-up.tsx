@@ -93,9 +93,9 @@ const styles = StyleSheet.create({
   label: { fontSize: 11, fontWeight: "700", marginBottom: 6 },
   inputWrap: { height: 46, borderRadius: 14, borderWidth: 1, paddingHorizontal: 13, flexDirection: "row", alignItems: "center", gap: 10 },
   input: { flex: 1, fontSize: 13, paddingVertical: 0 },
-  error: { fontSize: 12, lineHeight: 18, marginVertical: 3 },
-  button: { height: 49, borderRadius: 15, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 9, marginTop: 7 },
+  error: { fontSize: 12, lineHeight: 18, marginTop: 12, marginBottom: 12 },
+  button: { height: 49, borderRadius: 15, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 9, marginTop: 8 },
   buttonText: { fontSize: 14, fontWeight: "800" },
-  footer: { flexDirection: "row", alignItems: "center", justifyContent: "center", marginTop: 18 },
+  footer: { flexDirection: "row", alignItems: "center", justifyContent: "center", marginTop: 24 },
   link: { fontSize: 13, fontWeight: "800" },
 });

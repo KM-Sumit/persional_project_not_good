@@ -60,10 +60,17 @@ export default function AdminDashboardScreen() {
 
       {/* Quick Action Buttons */}
       <View style={styles.actionRow}>
+        <ActionCard label="Scheduled Tests" icon="clock" color="#ef4444" onPress={() => router.push("/admin-scheduled-tests")} />
+        <ActionCard label="PYQ Papers" icon="layers" color="#10b981" onPress={() => router.push("/admin-pyq")} />
+        <ActionCard label="Generate Test" icon="zap" color="#f59e0b" onPress={() => router.push("/admin-generate-test")} />
+      </View>
+      <View style={[styles.actionRow, { marginBottom: 10 }]}>
         <ActionCard label="Offers & Banners" icon="image" color="#ec4899" onPress={() => router.push("/admin-banners")} />
         <ActionCard label="Add Course" icon="book-open" color="#6366f1" onPress={() => router.push("/admin-add-course")} />
-        <ActionCard label="Add Note" icon="file-text" color="#10b981" onPress={() => router.push("/admin-add-note")} />
-        <ActionCard label="Generate Test" icon="zap" color="#f59e0b" onPress={() => router.push("/admin-generate-test")} />
+        <ActionCard label="Add Note" icon="file-text" color="#06b6d4" onPress={() => router.push("/admin-add-note")} />
+      </View>
+      <View style={[styles.actionRow, { marginBottom: 20 }]}>
+        <ActionCard label="Manage Tests" icon="edit-3" color="#8b5cf6" onPress={() => router.push("/admin-tests")} />
       </View>
 
       {/* Stats Grid */}

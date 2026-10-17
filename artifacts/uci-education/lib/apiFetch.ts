@@ -17,7 +17,9 @@ const API_BASE =
     ? process.env.EXPO_PUBLIC_DOMAIN.startsWith("http")
       ? process.env.EXPO_PUBLIC_DOMAIN
       : `http://${process.env.EXPO_PUBLIC_DOMAIN}`
-    : "http://10.229.196.10:5000";
+    : Platform.OS === "web"
+      ? ""
+      : "http://localhost:5000";
 
 /**
  * Authenticated fetch helper for admin forms.

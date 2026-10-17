@@ -10,9 +10,14 @@ if (!process.env.DATABASE_URL) {
   );
 }
 
+const isLocal =
+  !process.env.DATABASE_URL?.includes("sslmode=require") &&
+  (process.env.DATABASE_URL?.includes("localhost") ||
+    process.env.DATABASE_URL?.includes("127.0.0.1"));
+
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
+  ssl: isLocal ? false : { rejectUnauthorized: false },
   // Force IPv4 — prevents EHOSTUNREACH/ETIMEDOUT when DNS returns an IPv6 address
   family: 4,
   connectionTimeoutMillis: 15000,
