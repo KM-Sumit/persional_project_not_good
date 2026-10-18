@@ -1,5 +1,8 @@
 import { randomInt } from "node:crypto";
-import type { Pool, PoolClient } from "pg";
+
+type QueryClient = {
+  query: <T = any>(text: string, params?: any[]) => Promise<{ rows: T[] }>;
+};
 
 const CHARSET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"; // 32 characters, no ambiguous chars (0, O, 1, I)
 
@@ -61,7 +64,7 @@ const LOCKOUT_MINUTES = 15;
  * Check if the student or IP is locked out due to excessive failed attempts
  */
 export async function checkPasswordRateLimit(
-  client: Pool | PoolClient,
+  client: QueryClient,
   userId: number,
   testId: number,
   ip: string,
@@ -100,7 +103,7 @@ export async function checkPasswordRateLimit(
  * Record a failed password attempt and apply lockout if threshold exceeded
  */
 export async function recordFailedPasswordAttempt(
-  client: Pool | PoolClient,
+  client: QueryClient,
   userId: number,
   testId: number,
   ip: string,
@@ -149,7 +152,7 @@ export async function recordFailedPasswordAttempt(
  * Reset failed attempts upon successful password verification
  */
 export async function resetPasswordRateLimit(
-  client: Pool | PoolClient,
+  client: QueryClient,
   userId: number,
   testId: number,
 ): Promise<void> {

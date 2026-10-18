@@ -14,7 +14,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { Page, Panel } from "@/components/learning";
 import { useColors } from "@/hooks/useColors";
-import { apiFetch } from "@/lib/examApi";
+import { apiFetch } from "@/lib/apiFetch";
 
 interface Question {
   id: number;
@@ -54,7 +54,7 @@ export default function AdminTestQuestionsScreen() {
   async function loadQuestions() {
     setError(null);
     try {
-      const res = await apiFetch(`/api/admin/tests/${id}/questions`);
+      const res = await apiFetch<{ questions?: Question[] }>(`/api/admin/tests/${id}/questions`);
       setQuestions(res.questions ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load questions.");

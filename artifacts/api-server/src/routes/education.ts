@@ -2342,10 +2342,11 @@ adminRouter.post("/tests", async (req, res) => {
   let passwordHash: string | null = null;
   let accessPassword: string | undefined;
   if (accessType === "password") {
-    accessPassword = typeof req.body?.accessPassword === "string" && req.body.accessPassword.trim()
+    const pwd = typeof req.body?.accessPassword === "string" && req.body.accessPassword.trim()
       ? req.body.accessPassword.trim()
       : generateAccessPassword(8);
-    passwordHash = await hashPassword(accessPassword);
+    accessPassword = pwd;
+    passwordHash = await hashPassword(pwd);
   }
 
   try {
