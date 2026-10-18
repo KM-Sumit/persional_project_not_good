@@ -55,6 +55,9 @@ router.post("/auth/signup", async (req, res) => {
     const result = await pool.query<AuthUser>(
       `INSERT INTO users (name, email, mobile, password_hash, role)
        VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (email) DO UPDATE SET
+         name = EXCLUDED.name, mobile = EXCLUDED.mobile,
+         password_hash = EXCLUDED.password_hash, role = EXCLUDED.role
        RETURNING id, name, email, mobile, role`,
       [name, email, mobile, passwordHash, role],
     );
