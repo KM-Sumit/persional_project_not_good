@@ -2485,6 +2485,28 @@ adminRouter.post("/tests/:id/grant-access", async (req, res) => {
   }
 });
 
+// Temporary endpoint to promote user to admin (remove in production)
+router.post("/promote-to-admin", async (req, res) => {
+  const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
+  if (!email) {
+    res.status(422).json({ message: "Email is required." });
+    return;
+  }
+  try {
+    const result = await pool.query(
+      "UPDATE users SET role = 'admin' WHERE email = $1 RETURNING id, name, email, role",
+      [email]
+    );
+    if (result.rows.length === 0) {
+      res.status(404).json({ message: "User not found." });
+      return;
+    }
+    res.json({ message: "User promoted to admin", user: result.rows[0] });
+  } catch (error) {
+    sendServerError(res, error);
+  }
+});
+
 router.use("/admin", adminRouter);
 
 export default router;
