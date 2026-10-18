@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View, Alert, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useGetAdminDashboard, useGetAdminResults } from "@workspace/api-client-react";
@@ -8,6 +8,7 @@ import { EmptyState, ErrorState, LoadingState, Page, Panel, SectionTitle } from 
 import { useAuth } from "@/store/auth";
 import { useColors } from "@/hooks/useColors";
 import type { AdminResult, AdminStats } from "@/types/content";
+import { apiFetch } from "@/lib/apiFetch";
 
 export default function AdminDashboardScreen() {
   const colors = useColors();
@@ -16,6 +17,17 @@ export default function AdminDashboardScreen() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<"overview" | "scoreboard">("overview");
   const [refreshing, setRefreshing] = useState(false);
+
+  // Profile photo editing
+  const [showPhotoEdit, setShowPhotoEdit] = useState(false);
+  const [photoUrl, setPhotoUrl] = useState("");
+  const [savingPhoto, setSavingPhoto] = useState(false);
+
+  // Notification panel
+  const [showNotifPanel, setShowNotifPanel] = useState(false);
+  const [notifTitle, setNotifTitle] = useState("");
+  const [notifBody, setNotifBody] = useState("");
+  const [sendingNotif, setSendingNotif] = useState(false);
 
   // @ts-ignore
   const dashboardQuery = useGetAdminDashboard({ query: { staleTime: 0 } });
@@ -33,6 +45,30 @@ export default function AdminDashboardScreen() {
     ]);
     setRefreshing(false);
   }
+
+  const handleSavePhoto = async () => {
+    if (!photoUrl.trim()) return;
+    setSavingPhoto(true);
+    try {
+      await apiFetch("/api/admin/profile/photo", { method: "PATCH", body: JSON.stringify({ photoUrl: photoUrl.trim() }) });
+      Alert.alert("✅", "Profile photo updated!");
+      setShowPhotoEdit(false); setPhotoUrl("");
+    } catch (e: any) {
+      Alert.alert("Error", e?.message || "Could not update photo.");
+    } finally { setSavingPhoto(false); }
+  };
+
+  const handleSendNotification = async () => {
+    if (!notifTitle.trim() || !notifBody.trim()) return Alert.alert("Error", "Title aur message dono daalo");
+    setSendingNotif(true);
+    try {
+      await apiFetch("/api/admin/notify-all", { method: "POST", body: JSON.stringify({ title: notifTitle.trim(), body: notifBody.trim() }) });
+      Alert.alert("✅", "Notification send ho gayi!");
+      setNotifTitle(""); setNotifBody(""); setShowNotifPanel(false);
+    } catch (e: any) {
+      Alert.alert("Error", e?.message || "Notification nahi gayi.");
+    } finally { setSendingNotif(false); }
+  };
 
   // Group results by test for scoreboard
   const scoreboardByTest = results.reduce<Record<string, AdminResult[]>>((acc, r) => {
@@ -54,24 +90,108 @@ export default function AdminDashboardScreen() {
         <Text style={[styles.backText, { color: colors.foreground }]}>Profile</Text>
       </Pressable>
 
+      {/* Admin Profile Header */}
+      <View style={[styles.profileRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <Pressable onPress={() => setShowPhotoEdit(!showPhotoEdit)} style={styles.avatarWrap}>
+          {(user as any)?.photoUrl ? (
+            <Image source={{ uri: (user as any).photoUrl }} style={styles.avatarImg} />
+          ) : (
+            <View style={[styles.avatarPlaceholder, { backgroundColor: colors.primary + "20" }]}>
+              <Text style={{ fontSize: 26, fontWeight: "800", color: colors.primary }}>
+                {(user?.name ?? "A").slice(0, 1).toUpperCase()}
+              </Text>
+            </View>
+          )}
+          <View style={[styles.cameraBtn, { backgroundColor: colors.primary }]}>
+            <Feather name="camera" size={11} color="#fff" />
+          </View>
+        </Pressable>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.adminName, { color: colors.foreground }]}>{user?.name ?? "Admin"}</Text>
+          <Text style={[styles.adminEmail, { color: colors.mutedForeground }]}>{user?.email ?? ""}</Text>
+          <View style={[styles.adminBadge, { backgroundColor: colors.primary + "20" }]}>
+            <Feather name="shield" size={11} color={colors.primary} />
+            <Text style={[styles.adminBadgeText, { color: colors.primary }]}>UCI Administrator</Text>
+          </View>
+        </View>
+      </View>
+
+      {/* Profile Photo Edit Panel */}
+      {showPhotoEdit && (
+        <View style={[styles.notifPanel, { backgroundColor: colors.card, borderColor: "#6366f1" }]}>
+          <Text style={[styles.panelTitle, { color: colors.foreground }]}>📷 Profile Photo Update</Text>
+          <Text style={[styles.panelHint, { color: colors.mutedForeground }]}>Image URL ya Google Drive link paste karo</Text>
+          <TextInput
+            value={photoUrl} onChangeText={setPhotoUrl}
+            placeholder="https://... ya Google Drive link"
+            placeholderTextColor={colors.mutedForeground}
+            style={[styles.notifInput, { color: colors.foreground, backgroundColor: colors.background, borderColor: colors.border }]}
+            autoCapitalize="none"
+          />
+          <View style={{ flexDirection: "row", gap: 10 }}>
+            <Pressable onPress={() => setShowPhotoEdit(false)}
+              style={[styles.panelBtn, { backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border }]}>
+              <Text style={{ color: colors.foreground, fontWeight: "700", fontSize: 13 }}>Cancel</Text>
+            </Pressable>
+            <Pressable onPress={handleSavePhoto} disabled={savingPhoto}
+              style={[styles.panelBtn, { flex: 1, backgroundColor: "#6366f1", opacity: savingPhoto ? 0.7 : 1 }]}>
+              {savingPhoto ? <ActivityIndicator color="#fff" size="small" /> : <Text style={{ color: "#fff", fontWeight: "800", fontSize: 13 }}>Save Photo</Text>}
+            </Pressable>
+          </View>
+        </View>
+      )}
+
       <Text style={[styles.kicker, { color: colors.primary }]}>UCI ADMINISTRATION</Text>
       <Text style={[styles.title, { color: colors.foreground }]}>Dashboard</Text>
       <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>Manage students, content, and test results.</Text>
 
       {/* Quick Action Buttons */}
-      <View style={styles.actionRow}>
+      <View style={styles.actionGrid}>
         <ActionCard label="Scheduled Tests" icon="clock" color="#ef4444" onPress={() => router.push("/admin-scheduled-tests")} />
         <ActionCard label="PYQ Papers" icon="layers" color="#10b981" onPress={() => router.push("/admin-pyq")} />
+        <ActionCard label="Manage Tests" icon="edit-3" color="#8b5cf6" onPress={() => router.push("/admin-tests")} />
         <ActionCard label="Generate Test" icon="zap" color="#f59e0b" onPress={() => router.push("/admin-generate-test")} />
-      </View>
-      <View style={[styles.actionRow, { marginBottom: 10 }]}>
         <ActionCard label="Offers & Banners" icon="image" color="#ec4899" onPress={() => router.push("/admin-banners")} />
         <ActionCard label="Add Course" icon="book-open" color="#6366f1" onPress={() => router.push("/admin-add-course")} />
-        <ActionCard label="Add Note" icon="file-text" color="#06b6d4" onPress={() => router.push("/admin-add-note")} />
+        <ActionCard label="Notes Manager" icon="file-text" color="#06b6d4" onPress={() => router.push("/admin-notes")} />
+        <ActionCard label="Send Notification" icon="bell" color="#a855f7" onPress={() => setShowNotifPanel(!showNotifPanel)} />
+        <ActionCard label="Edit Profile" icon="user" color="#0ea5e9" onPress={() => setShowPhotoEdit(!showPhotoEdit)} />
       </View>
-      <View style={[styles.actionRow, { marginBottom: 20 }]}>
-        <ActionCard label="Manage Tests" icon="edit-3" color="#8b5cf6" onPress={() => router.push("/admin-tests")} />
-      </View>
+
+      {/* Notification Panel */}
+      {showNotifPanel && (
+        <View style={[styles.notifPanel, { backgroundColor: colors.card, borderColor: "#8b5cf6" }]}>
+          <Text style={[styles.panelTitle, { color: colors.foreground }]}>🔔 Send Notification to All Users</Text>
+          <TextInput
+            value={notifTitle} onChangeText={setNotifTitle}
+            placeholder="Notification Title"
+            placeholderTextColor={colors.mutedForeground}
+            style={[styles.notifInput, { color: colors.foreground, backgroundColor: colors.background, borderColor: colors.border }]}
+          />
+          <TextInput
+            value={notifBody} onChangeText={setNotifBody}
+            placeholder="Message likhao..."
+            placeholderTextColor={colors.mutedForeground}
+            multiline
+            style={[styles.notifInput, { color: colors.foreground, backgroundColor: colors.background, borderColor: colors.border, minHeight: 70, textAlignVertical: "top" }]}
+          />
+          <View style={{ flexDirection: "row", gap: 10 }}>
+            <Pressable onPress={() => setShowNotifPanel(false)}
+              style={[styles.panelBtn, { backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border }]}>
+              <Text style={{ color: colors.foreground, fontWeight: "700", fontSize: 13 }}>Cancel</Text>
+            </Pressable>
+            <Pressable onPress={handleSendNotification} disabled={sendingNotif}
+              style={[styles.panelBtn, { flex: 1, backgroundColor: "#8b5cf6", opacity: sendingNotif ? 0.7 : 1 }]}>
+              {sendingNotif ? <ActivityIndicator color="#fff" size="small" /> : (
+                <>
+                  <Feather name="send" size={14} color="#fff" />
+                  <Text style={{ color: "#fff", fontWeight: "800", fontSize: 13 }}>Send</Text>
+                </>
+              )}
+            </Pressable>
+          </View>
+        </View>
+      )}
 
       {/* Stats Grid */}
       {dashboardQuery.isLoading ? <LoadingState label="Loading dashboard stats…" /> : null}
@@ -189,13 +309,27 @@ const styles = StyleSheet.create({
   scroll: { paddingHorizontal: 16, paddingVertical: 24, paddingBottom: 40 },
   back: { flexDirection: "row", alignItems: "center", gap: 7, marginBottom: 21 },
   backText: { fontSize: 13, fontWeight: "700" },
+  profileRow: { flexDirection: "row", alignItems: "center", gap: 14, borderRadius: 20, borderWidth: 1, padding: 14, marginBottom: 20 },
+  avatarWrap: { position: "relative", width: 60, height: 60 },
+  avatarImg: { width: 60, height: 60, borderRadius: 18 },
+  avatarPlaceholder: { width: 60, height: 60, borderRadius: 18, alignItems: "center", justifyContent: "center" },
+  cameraBtn: { position: "absolute", bottom: -2, right: -2, width: 20, height: 20, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  adminName: { fontSize: 16, fontWeight: "800" },
+  adminEmail: { fontSize: 11, marginTop: 2 },
+  adminBadge: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, alignSelf: "flex-start", marginTop: 6 },
+  adminBadgeText: { fontSize: 10, fontWeight: "700" },
   kicker: { fontSize: 10, fontWeight: "800", letterSpacing: 1.2, marginBottom: 5 },
   title: { fontSize: 30, fontWeight: "800", letterSpacing: -0.8 },
   subtitle: { fontSize: 13, lineHeight: 19, marginTop: 5, marginBottom: 16 },
-  actionRow: { flexDirection: "row", gap: 10, marginBottom: 18 },
-  actionCard: { flex: 1, alignItems: "center", borderRadius: 18, borderWidth: 1, paddingVertical: 16, gap: 8 },
+  actionGrid: { flexDirection: "row", gap: 10, marginBottom: 18, flexWrap: "wrap" },
+  actionCard: { width: "30%", alignItems: "center", borderRadius: 18, borderWidth: 1, paddingVertical: 16, gap: 8 },
   actionIcon: { width: 44, height: 44, borderRadius: 14, alignItems: "center", justifyContent: "center" },
-  actionLabel: { fontSize: 11, fontWeight: "700", textAlign: "center" },
+  actionLabel: { fontSize: 10, fontWeight: "700", textAlign: "center" },
+  notifPanel: { borderRadius: 18, borderWidth: 1.5, padding: 16, marginBottom: 18, gap: 10 },
+  panelTitle: { fontSize: 14, fontWeight: "800", marginBottom: 4 },
+  panelHint: { fontSize: 11, marginBottom: 4 },
+  notifInput: { borderWidth: 1.5, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, fontSize: 13 },
+  panelBtn: { borderRadius: 12, paddingVertical: 12, paddingHorizontal: 16, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
   statGrid: { flexDirection: "row", gap: 9, flexWrap: "wrap", marginBottom: 20 },
   stat: { width: "48%", padding: 13, minHeight: 100 },
   statIcon: { width: 30, height: 30, borderRadius: 10, alignItems: "center", justifyContent: "center" },

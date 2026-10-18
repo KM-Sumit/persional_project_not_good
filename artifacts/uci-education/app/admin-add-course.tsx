@@ -6,6 +6,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
@@ -36,6 +37,15 @@ function generateId() {
   return Math.random().toString(36).slice(2, 9);
 }
 
+// Convert Google Drive share link → direct viewable image
+function convertGDrive(url: string): string {
+  const m1 = url.match(/drive\.google\.com\/file\/d\/([^/]+)/);
+  if (m1?.[1]) return `https://drive.google.com/uc?export=view&id=${m1[1]}`;
+  const m2 = url.match(/drive\.google\.com\/open\?id=([^&]+)/);
+  if (m2?.[1]) return `https://drive.google.com/uc?export=view&id=${m2[1]}`;
+  return url;
+}
+
 export default function AdminAddCourseScreen() {
   const colors = useColors();
   const router = useRouter();
@@ -60,6 +70,7 @@ export default function AdminAddCourseScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
+  const [sendNotif, setSendNotif] = useState(true);
 
   // ── VIDEO HELPERS ──
   function addVideo() {
@@ -97,8 +108,7 @@ export default function AdminAddCourseScreen() {
           instructor: instructor.trim() || "UCI Faculty",
           exam,
           category: category.trim() || exam,
-          thumbnailUrl: thumbnailUrl.trim(),
-          // videos and notes sent as metadata for later server support
+          thumbnailUrl: convertGDrive(thumbnailUrl.trim()),
           lessons: videos.map((v, i) => ({
             title: v.title.trim() || `Lesson ${i + 1}`,
             kind: "video",
@@ -107,6 +117,18 @@ export default function AdminAddCourseScreen() {
           })),
         }),
       });
+      // Send notification if toggled
+      if (sendNotif && title.trim()) {
+        try {
+          await apiFetch("/api/admin/notify-all", {
+            method: "POST",
+            body: JSON.stringify({
+              title: "🎉 New Course Available!",
+              body: `"${title.trim()}" ab available hai. Abhi check karo!`,
+            }),
+          });
+        } catch {} // notification failure should not block course publish
+      }
       setSuccess(true);
     } catch (err: any) {
       setError(err?.message ?? "Course add karne mein problem hui.");
@@ -127,8 +149,12 @@ export default function AdminAddCourseScreen() {
           <Text style={[styles.successSub, { color: colors.mutedForeground }]}>
             "{title}" ab students ko dikh raha hai.
           </Text>
+          <View style={[styles.notifRow, { backgroundColor: "#8b5cf610", borderColor: "#8b5cf640" }]}>
+            <Feather name="bell" size={15} color="#8b5cf6" />
+            <Text style={{ flex: 1, fontSize: 12, color: colors.foreground }}>Notification {sendNotif ? "bhej di gayi ✅" : "nahi bheji"}</Text>
+          </View>
           <Pressable
-            onPress={() => { setSuccess(false); setTitle(""); setDescription(""); setInstructor(""); setThumbnailUrl(""); setVideos([]); setNotes([]); setTab("info"); }}
+            onPress={() => { setSuccess(false); setTitle(""); setDescription(""); setInstructor(""); setThumbnailUrl(""); setVideos([]); setNotes([]); setTab("info"); setSendNotif(true); }}
             style={[styles.btn, { backgroundColor: "#6366f1", marginBottom: 10 }]}
           >
             <Feather name="plus" size={15} color="#fff" />
@@ -163,6 +189,15 @@ export default function AdminAddCourseScreen() {
           <Feather name="book-open" size={18} color="#6366f1" />
         </View>
         <Text style={[styles.topTitle, { color: colors.foreground }]}>Add Course</Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <Feather name="bell" size={13} color={sendNotif ? "#8b5cf6" : colors.mutedForeground} />
+          <Switch
+            value={sendNotif}
+            onValueChange={setSendNotif}
+            trackColor={{ true: "#8b5cf6" }}
+            style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
+          />
+        </View>
         <Pressable
           onPress={() => void submit()}
           disabled={busy}
@@ -213,7 +248,10 @@ export default function AdminAddCourseScreen() {
             </View>
 
             <Field label="Poster / Thumbnail URL" value={thumbnailUrl} onChangeText={setThumbnailUrl}
-              placeholder="https://example.com/poster.jpg" icon="image" colors={colors} keyboardType="url" />
+              placeholder="https://... ya Google Drive share link" icon="image" colors={colors} keyboardType="url" />
+            <Text style={{ fontSize: 11, color: colors.mutedForeground, marginTop: -6, marginBottom: 6, marginLeft: 2 }}>
+              💡 Google Drive link bhi kaam karega — auto-convert hoga
+            </Text>
 
             <Field label="Course Title *" value={title} onChangeText={setTitle}
               placeholder="e.g. Complete SSC GK Preparation" icon="book" colors={colors} />
@@ -527,4 +565,5 @@ const styles = StyleSheet.create({
   successSub: { fontSize: 14, lineHeight: 21, textAlign: "center", marginBottom: 32 },
   btn: { width: "100%", height: 50, borderRadius: 14, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
   btnText: { fontSize: 14, fontWeight: "700" },
+  notifRow: { flexDirection: "row", alignItems: "center", gap: 8, borderRadius: 12, borderWidth: 1, padding: 10, marginBottom: 20, width: "100%" },
 });

@@ -22,362 +22,386 @@ async function apiFetch(path: string, token: string, method = "GET", body?: obje
   return data;
 }
 
-function useList<T>(path: string, token: string, deps: any[] = []) {
-  const [items, setItems] = useState<T[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const refetch = useCallback(async () => {
-    setLoading(true); setError(null);
-    try { const d = await apiFetch(path, token); setItems(Object.values(d)[0] as T[]); }
-    catch (e: any) { setError(e.message); }
-    finally { setLoading(false); }
-  }, [path, token, ...deps]);
-  useEffect(() => { refetch(); }, [refetch]);
-  return { items, loading, error, refetch };
-}
+type Section = { id: number; name: string; icon: string };
+type Exam    = { id: number; sectionId: number; name: string; icon: string };
+type Subject = { id: number; examId: number; name: string };
+type ExamNote = { id: number; examId: number; examName: string; subjectName: string | null; title: string; pdfUrl: string; isPublished: boolean };
 
-// ── Generic field row ──
-function Row({ label, value, onChange, placeholder, multiline }: any) {
-  const colors = useColors();
+function LabelInput({ label, value, onChange, placeholder, hint }: any) {
+  const c = useColors();
   return (
     <View style={{ marginBottom: 12 }}>
-      <Text style={[f.label, { color: colors.mutedForeground }]}>{label}</Text>
+      <Text style={{ fontSize: 11, fontWeight: "700", color: c.mutedForeground, marginBottom: 4, textTransform: "uppercase" }}>{label}</Text>
+      {hint ? <Text style={{ fontSize: 11, color: c.mutedForeground, marginBottom: 4 }}>{hint}</Text> : null}
       <TextInput value={value} onChangeText={onChange} placeholder={placeholder}
-        placeholderTextColor={colors.mutedForeground} multiline={multiline}
-        style={[f.input, { color: colors.foreground, backgroundColor: colors.card, borderColor: colors.border, height: multiline ? 80 : 44 }]} />
+        placeholderTextColor={c.mutedForeground}
+        style={{ borderWidth: 1.5, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, fontSize: 13, color: c.foreground, backgroundColor: c.card, borderColor: c.border }} />
     </View>
   );
 }
-const f = StyleSheet.create({
-  label: { fontSize: 11, fontWeight: "700", marginBottom: 5, textTransform: "uppercase", letterSpacing: 0.5 },
-  input: { borderWidth: 1.5, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8, fontSize: 13 },
-});
 
-function Btn({ label, color, onPress, icon }: { label: string; color: string; onPress: () => void; icon?: any }) {
+function PillList({ items, selectedId, onSelect, color }: { items: { id: number; name: string; icon?: string }[]; selectedId: number | null; onSelect: (id: number) => void; color: string }) {
+  const c = useColors();
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [bt.btn, { backgroundColor: color, opacity: pressed ? 0.85 : 1 }]}>
-      {icon && <Feather name={icon} size={14} color="#fff" />}
-      <Text style={bt.txt}>{label}</Text>
-    </Pressable>
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+      {items.map(i => (
+        <Pressable key={i.id} onPress={() => onSelect(i.id)}
+          style={{ borderRadius: 20, borderWidth: 1.5, paddingHorizontal: 14, paddingVertical: 8, marginRight: 8,
+            backgroundColor: selectedId === i.id ? color + "20" : "transparent",
+            borderColor: selectedId === i.id ? color : c.border }}>
+          <Text style={{ fontSize: 12, fontWeight: "700", color: selectedId === i.id ? color : c.foreground }}>
+            {i.icon ? `${i.icon} ` : ""}{i.name}
+          </Text>
+        </Pressable>
+      ))}
+    </ScrollView>
   );
 }
-const bt = StyleSheet.create({
-  btn: { flexDirection: "row", alignItems: "center", gap: 6, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 9 },
-  txt: { color: "#fff", fontSize: 12, fontWeight: "800" },
-});
-
-type Section = { id: number; name: string; icon: string; description: string; isActive: boolean; displayOrder: number };
-type Exam    = { id: number; sectionId: number; sectionName: string; name: string; icon: string; description: string; isActive: boolean; displayOrder: number };
-type Subject = { id: number; examId: number; examName: string; name: string; description: string; isActive: boolean; displayOrder: number };
-type ExamNote = { id: number; examId: number; examName: string; subjectId: number | null; subjectName: string | null; title: string; description: string; pdfUrl: string; isPublished: boolean; createdAt: string };
-
-type Tab = "sections" | "exams" | "subjects" | "notes";
 
 export default function AdminNotesScreen() {
-  const colors = useColors();
+  const c = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { token } = useAuth() as any;
   const tok = token ?? "";
 
-  const [tab, setTab] = useState<Tab>("sections");
+  // Step: 0=section, 1=exam, 2=subject, 3=notes
+  const [step, setStep] = useState(0);
   const [migrated, setMigrated] = useState(false);
   const [migrating, setMigrating] = useState(false);
 
-  // ── Sections ──
-  const secQ = useList<Section>("/notes/sections", tok);
-  const [newSec, setNewSec] = useState({ name: "", icon: "📚", description: "" });
-  const [savingSec, setSavingSec] = useState(false);
+  const [sections, setSections] = useState<Section[]>([]);
+  const [exams, setExams] = useState<Exam[]>([]);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [allNotes, setAllNotes] = useState<ExamNote[]>([]);
 
-  // ── Exams ──
-  const [selSectionId, setSelSectionId] = useState<number | null>(null);
-  const exQ = useList<Exam>(`/notes/exams${selSectionId ? `?sectionId=${selSectionId}` : ""}`, tok, [selSectionId]);
-  const [newEx, setNewEx] = useState({ sectionId: "", name: "", icon: "📝", description: "" });
-  const [savingEx, setSavingEx] = useState(false);
+  const [selSection, setSelSection] = useState<Section | null>(null);
+  const [selExam, setSelExam] = useState<Exam | null>(null);
+  const [selSubject, setSelSubject] = useState<Subject | null>(null);
 
-  // ── Subjects ──
-  const [selExamId, setSelExamId] = useState<number | null>(null);
-  const subQ = useList<Subject>(`/notes/subjects${selExamId ? `?examId=${selExamId}` : ""}`, tok, [selExamId]);
-  const [newSub, setNewSub] = useState({ examId: "", name: "", description: "" });
-  const [savingSub, setSavingSub] = useState(false);
+  // Create new forms
+  const [newSecName, setNewSecName] = useState("");
+  const [newSecIcon, setNewSecIcon] = useState("📚");
+  const [newExName, setNewExName] = useState("");
+  const [newExIcon, setNewExIcon] = useState("📝");
+  const [newSubName, setNewSubName] = useState("");
+  const [noteTitle, setNoteTitle] = useState("");
+  const [notePdfUrl, setNotePdfUrl] = useState("");
+  const [noteDesc, setNoteDesc] = useState("");
+  const [notePublished, setNotePublished] = useState(true);
+  const [saving, setSaving] = useState(false);
 
-  // ── Notes ──
-  const [selExamIdN, setSelExamIdN] = useState<number | null>(null);
-  const noteQ = useList<ExamNote>(`/notes/exam-notes${selExamIdN ? `?examId=${selExamIdN}` : ""}`, tok, [selExamIdN]);
-  const [newNote, setNewNote] = useState({ examId: "", subjectId: "", title: "", description: "", pdfUrl: "", tags: "", isPublished: false });
-  const [savingNote, setSavingNote] = useState(false);
+  const loadSections = useCallback(async () => {
+    try { const d = await apiFetch("/notes/sections", tok); setSections(d.sections ?? []); } catch {}
+  }, [tok]);
 
-  // ── Migration ──
+  const loadExams = useCallback(async (sectionId: number) => {
+    try { const d = await apiFetch(`/notes/exams?sectionId=${sectionId}`, tok); setExams(d.exams ?? []); } catch {}
+  }, [tok]);
+
+  const loadSubjects = useCallback(async (examId: number) => {
+    try { const d = await apiFetch(`/notes/subjects?examId=${examId}`, tok); setSubjects(d.subjects ?? []); } catch {}
+  }, [tok]);
+
+  const loadNotes = useCallback(async (examId: number) => {
+    try { const d = await apiFetch(`/notes/exam-notes?examId=${examId}`, tok); setAllNotes(d.examNotes ?? []); } catch {}
+  }, [tok]);
+
+  useEffect(() => { loadSections(); }, [loadSections]);
+
   const runMigration = async () => {
     setMigrating(true);
+    try { await apiFetch("/migrate-notes", tok, "POST"); setMigrated(true); loadSections(); Alert.alert("✅ Done", "Tables ready!"); }
+    catch (e: any) { Alert.alert("Error", e.message); }
+    finally { setMigrating(false); }
+  };
+
+  const goToStep = (n: number) => setStep(n);
+
+  const handleSelectSection = (s: Section) => {
+    setSelSection(s); setSelExam(null); setSelSubject(null);
+    loadExams(s.id); setStep(1);
+  };
+
+  const handleSelectExam = (e: Exam) => {
+    setSelExam(e); setSelSubject(null);
+    loadSubjects(e.id); loadNotes(e.id); setStep(2);
+  };
+
+  const handleSelectSubject = (s: Subject) => {
+    setSelSubject(s); setStep(3);
+  };
+
+  const addSection = async () => {
+    if (!newSecName) return Alert.alert("Error", "Name required");
+    setSaving(true);
     try {
-      await apiFetch("/migrate-notes", tok, "POST");
-      setMigrated(true);
-      Alert.alert("✅ Success", "Tables created! Refresh the lists.");
-      secQ.refetch();
-    } catch (e: any) {
-      Alert.alert("Error", e.message);
-    } finally { setMigrating(false); }
+      await apiFetch("/notes/sections", tok, "POST", { name: newSecName, icon: newSecIcon });
+      setNewSecName(""); setNewSecIcon("📚"); loadSections();
+      Alert.alert("✅", "Section added!");
+    } catch (e: any) { Alert.alert("Error", e.message); }
+    finally { setSaving(false); }
   };
 
-  const confirm = (msg: string, onOk: () => void) => {
-    if (Platform.OS === "web") { if (window.confirm(msg)) onOk(); }
-    else Alert.alert("Confirm", msg, [{ text: "Cancel" }, { text: "Delete", style: "destructive", onPress: onOk }]);
+  const addExam = async () => {
+    if (!selSection || !newExName) return Alert.alert("Error", "Select section and enter exam name");
+    setSaving(true);
+    try {
+      await apiFetch("/notes/exams", tok, "POST", { sectionId: selSection.id, name: newExName, icon: newExIcon });
+      setNewExName(""); setNewExIcon("📝"); loadExams(selSection.id);
+      Alert.alert("✅", "Exam added!");
+    } catch (e: any) { Alert.alert("Error", e.message); }
+    finally { setSaving(false); }
   };
 
-  const paddingTop = Platform.OS === "web" ? 60 : insets.top + 8;
-  const paddingBottom = Platform.OS === "web" ? 100 : Math.max(100, insets.bottom + 80);
+  const addSubject = async () => {
+    if (!selExam || !newSubName) return Alert.alert("Error", "Select exam and enter subject name");
+    setSaving(true);
+    try {
+      await apiFetch("/notes/subjects", tok, "POST", { examId: selExam.id, name: newSubName });
+      setNewSubName(""); loadSubjects(selExam.id);
+      Alert.alert("✅", "Subject added!");
+    } catch (e: any) { Alert.alert("Error", e.message); }
+    finally { setSaving(false); }
+  };
+
+  const saveNote = async () => {
+    if (!selExam || !noteTitle || !notePdfUrl) return Alert.alert("Error", "Exam, title aur PDF/Drive link zaroori hai");
+    setSaving(true);
+    try {
+      await apiFetch("/notes/exam-notes", tok, "POST", {
+        examId: selExam.id,
+        subjectId: selSubject ? selSubject.id : null,
+        title: noteTitle, description: noteDesc, pdfUrl: notePdfUrl,
+        isPublished: notePublished,
+      });
+      setNoteTitle(""); setNotePdfUrl(""); setNoteDesc(""); setNotePublished(true);
+      loadNotes(selExam.id);
+      Alert.alert("✅", "Note saved!");
+    } catch (e: any) { Alert.alert("Error", e.message); }
+    finally { setSaving(false); }
+  };
+
+  const pt = Platform.OS === "web" ? 60 : insets.top + 8;
+  const pb = Platform.OS === "web" ? 100 : Math.max(100, insets.bottom + 80);
+
+  const STEPS = ["📂 Section", "📋 Exam", "📖 Subject", "📄 Notes"];
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: colors.background }} showsVerticalScrollIndicator={false}
-      contentContainerStyle={{ paddingHorizontal: 16, paddingTop, paddingBottom }}>
+    <ScrollView style={{ flex: 1, backgroundColor: c.background }} showsVerticalScrollIndicator={false}
+      contentContainerStyle={{ paddingHorizontal: 16, paddingTop: pt, paddingBottom: pb }}>
 
       {/* Header */}
       <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 4 }}>
         <Pressable onPress={() => router.back()} style={{ marginRight: 12 }} hitSlop={8}>
-          <Feather name="arrow-left" size={20} color={colors.foreground} />
+          <Feather name="arrow-left" size={20} color={c.foreground} />
         </Pressable>
-        <Text style={[pg.title, { color: colors.foreground }]}>Manage Notes</Text>
+        <Text style={{ fontSize: 22, fontWeight: "800", color: c.foreground }}>Notes Manager</Text>
       </View>
-      <Text style={[pg.sub, { color: colors.mutedForeground }]}>Sections → Exams → Subjects → PDF Notes</Text>
+      <Text style={{ fontSize: 12, color: c.mutedForeground, marginBottom: 16 }}>
+        Section → Exam → Subject → Note — ek form mein sabkuch
+      </Text>
 
-      {/* Migration Banner */}
+      {/* Migration */}
       {!migrated && (
-        <View style={[pg.migBanner]}>
-          <Text style={{ color: "#92400e", fontSize: 12, flex: 1 }}>Run DB migration to create notes tables (first time only)</Text>
-          {migrating ? <ActivityIndicator color="#D97706" /> : <Btn label="Run Migration" color="#D97706" onPress={runMigration} icon="database" />}
+        <View style={{ backgroundColor: "#FEF3C7", borderRadius: 14, padding: 12, flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 16 }}>
+          <Text style={{ color: "#92400e", fontSize: 12, flex: 1 }}>First time? DB tables create karo</Text>
+          {migrating ? <ActivityIndicator color="#D97706" /> : (
+            <Pressable onPress={runMigration} style={{ backgroundColor: "#D97706", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 7 }}>
+              <Text style={{ color: "#fff", fontSize: 12, fontWeight: "800" }}>Run Migration</Text>
+            </Pressable>
+          )}
         </View>
       )}
 
-      {/* Tabs */}
-      <View style={pg.tabs}>
-        {(["sections", "exams", "subjects", "notes"] as Tab[]).map(t => (
-          <Pressable key={t} onPress={() => setTab(t)} style={[pg.tab, { backgroundColor: tab === t ? "#D97706" : colors.card, borderColor: colors.border }]}>
-            <Text style={[pg.tabTxt, { color: tab === t ? "#fff" : colors.mutedForeground }]}>{t[0].toUpperCase() + t.slice(1)}</Text>
+      {/* Step Indicator */}
+      <View style={{ flexDirection: "row", gap: 4, marginBottom: 20 }}>
+        {STEPS.map((s, i) => (
+          <Pressable key={i} onPress={() => i < step ? goToStep(i) : null}
+            style={{ flex: 1, paddingVertical: 8, borderRadius: 10, alignItems: "center",
+              backgroundColor: step === i ? "#D97706" : i < step ? "#D9770630" : c.card,
+              borderWidth: 1, borderColor: step === i ? "#D97706" : c.border }}>
+            <Text style={{ fontSize: 9, fontWeight: "800", color: step === i ? "#fff" : i < step ? "#D97706" : c.mutedForeground }}>
+              {s}
+            </Text>
           </Pressable>
         ))}
       </View>
 
-      {/* ── SECTIONS TAB ── */}
-      {tab === "sections" && (
+      {/* ── STEP 0: SECTION ── */}
+      {step === 0 && (
         <View>
-          <Text style={[pg.sectionHd, { color: colors.foreground }]}>Add Exam Section</Text>
-          <Row label="Section Name" value={newSec.name} onChange={(v: string) => setNewSec(p => ({ ...p, name: v }))} placeholder="e.g. SSC, Banking, Railway" />
-          <Row label="Icon (emoji)" value={newSec.icon} onChange={(v: string) => setNewSec(p => ({ ...p, icon: v }))} placeholder="📚" />
-          <Row label="Description (optional)" value={newSec.description} onChange={(v: string) => setNewSec(p => ({ ...p, description: v }))} placeholder="Short description..." multiline />
-          <Btn label={savingSec ? "Saving..." : "Add Section"} color="#D97706" icon="plus" onPress={async () => {
-            if (!newSec.name) return Alert.alert("Error", "Name required");
-            setSavingSec(true);
-            try { await apiFetch("/notes/sections", tok, "POST", newSec); setNewSec({ name: "", icon: "📚", description: "" }); secQ.refetch(); }
-            catch (e: any) { Alert.alert("Error", e.message); }
-            finally { setSavingSec(false); }
-          }} />
-          <Text style={[pg.sectionHd, { color: colors.foreground, marginTop: 20 }]}>All Sections ({secQ.items.length})</Text>
-          {secQ.loading && <ActivityIndicator color="#D97706" style={{ marginTop: 10 }} />}
-          {secQ.items.map(s => (
-            <View key={s.id} style={[pg.item, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <Text style={{ fontSize: 22 }}>{s.icon}</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={[pg.itemTitle, { color: colors.foreground }]}>{s.name}</Text>
-                <Text style={[pg.itemSub, { color: colors.mutedForeground }]}>{s.description || "No description"}</Text>
-              </View>
-              <Switch value={s.isActive} onValueChange={async (v) => {
-                await apiFetch(`/notes/sections/${s.id}`, tok, "PATCH", { isActive: v }).catch(() => {});
-                secQ.refetch();
-              }} trackColor={{ true: "#D97706" }} />
-              <Pressable onPress={() => confirm("Delete this section and all its exams/notes?", async () => {
-                await apiFetch(`/notes/sections/${s.id}`, tok, "DELETE").catch(() => {});
-                secQ.refetch();
-              })} hitSlop={8}><Feather name="trash-2" size={16} color="#ef4444" /></Pressable>
-            </View>
-          ))}
-        </View>
-      )}
+          <Text style={{ fontSize: 15, fontWeight: "800", color: c.foreground, marginBottom: 12 }}>📂 Section चुनें या बनाएं</Text>
 
-      {/* ── EXAMS TAB ── */}
-      {tab === "exams" && (
-        <View>
-          <Text style={[pg.sectionHd, { color: colors.foreground }]}>Add Exam</Text>
-          <View style={{ marginBottom: 12 }}>
-            <Text style={[f.label, { color: colors.mutedForeground }]}>Select Section</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              {secQ.items.map(s => (
-                <Pressable key={s.id} onPress={() => { setNewEx(p => ({ ...p, sectionId: String(s.id) })); setSelSectionId(s.id); }}
-                  style={[pg.pill, { backgroundColor: String(s.id) === newEx.sectionId ? "#D97706" : colors.card, borderColor: colors.border }]}>
-                  <Text style={{ color: String(s.id) === newEx.sectionId ? "#fff" : colors.foreground, fontSize: 12, fontWeight: "700" }}>{s.icon} {s.name}</Text>
+          {sections.length > 0 && (
+            <>
+              <Text style={{ fontSize: 11, fontWeight: "700", color: c.mutedForeground, marginBottom: 8, textTransform: "uppercase" }}>Existing Sections</Text>
+              {sections.map(s => (
+                <Pressable key={s.id} onPress={() => handleSelectSection(s)}
+                  style={{ flexDirection: "row", alignItems: "center", gap: 12, borderRadius: 14, borderWidth: 1.5,
+                    padding: 14, marginBottom: 8, backgroundColor: c.card, borderColor: c.border }}>
+                  <Text style={{ fontSize: 22 }}>{s.icon}</Text>
+                  <Text style={{ flex: 1, fontSize: 14, fontWeight: "700", color: c.foreground }}>{s.name}</Text>
+                  <Feather name="chevron-right" size={18} color="#D97706" />
                 </Pressable>
               ))}
-            </ScrollView>
-          </View>
-          <Row label="Exam Name" value={newEx.name} onChange={(v: string) => setNewEx(p => ({ ...p, name: v }))} placeholder="e.g. SSC CGL, IBPS PO" />
-          <Row label="Icon (emoji)" value={newEx.icon} onChange={(v: string) => setNewEx(p => ({ ...p, icon: v }))} placeholder="📝" />
-          <Row label="Description (optional)" value={newEx.description} onChange={(v: string) => setNewEx(p => ({ ...p, description: v }))} placeholder="Short description..." multiline />
-          <Btn label={savingEx ? "Saving..." : "Add Exam"} color="#6366f1" icon="plus" onPress={async () => {
-            if (!newEx.sectionId || !newEx.name) return Alert.alert("Error", "Select section and enter name");
-            setSavingEx(true);
-            try { await apiFetch("/notes/exams", tok, "POST", { ...newEx, sectionId: Number(newEx.sectionId) }); setNewEx(p => ({ ...p, name: "", description: "" })); exQ.refetch(); }
-            catch (e: any) { Alert.alert("Error", e.message); }
-            finally { setSavingEx(false); }
-          }} />
-          <Text style={[pg.sectionHd, { color: colors.foreground, marginTop: 20 }]}>All Exams ({exQ.items.length})</Text>
-          {exQ.loading && <ActivityIndicator color="#6366f1" style={{ marginTop: 10 }} />}
-          {exQ.items.map(e => (
-            <View key={e.id} style={[pg.item, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <Text style={{ fontSize: 20 }}>{e.icon}</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={[pg.itemTitle, { color: colors.foreground }]}>{e.name}</Text>
-                <Text style={[pg.itemSub, { color: colors.mutedForeground }]}>{e.sectionName}</Text>
-              </View>
-              <Switch value={e.isActive} onValueChange={async (v) => {
-                await apiFetch(`/notes/exams/${e.id}`, tok, "PATCH", { isActive: v }).catch(() => {});
-                exQ.refetch();
-              }} trackColor={{ true: "#6366f1" }} />
-              <Pressable onPress={() => confirm("Delete this exam and all its notes?", async () => {
-                await apiFetch(`/notes/exams/${e.id}`, tok, "DELETE").catch(() => {});
-                exQ.refetch();
-              })} hitSlop={8}><Feather name="trash-2" size={16} color="#ef4444" /></Pressable>
-            </View>
-          ))}
-        </View>
-      )}
-
-      {/* ── SUBJECTS TAB ── */}
-      {tab === "subjects" && (
-        <View>
-          <Text style={[pg.sectionHd, { color: colors.foreground }]}>Add Subject</Text>
-          <View style={{ marginBottom: 12 }}>
-            <Text style={[f.label, { color: colors.mutedForeground }]}>Select Exam</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              {exQ.items.map(e => (
-                <Pressable key={e.id} onPress={() => { setNewSub(p => ({ ...p, examId: String(e.id) })); setSelExamId(e.id); }}
-                  style={[pg.pill, { backgroundColor: String(e.id) === newSub.examId ? "#10b981" : colors.card, borderColor: colors.border }]}>
-                  <Text style={{ color: String(e.id) === newSub.examId ? "#fff" : colors.foreground, fontSize: 12, fontWeight: "700" }}>{e.name}</Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-          </View>
-          <Row label="Subject Name" value={newSub.name} onChange={(v: string) => setNewSub(p => ({ ...p, name: v }))} placeholder="e.g. Reasoning, Mathematics" />
-          <Row label="Description (optional)" value={newSub.description} onChange={(v: string) => setNewSub(p => ({ ...p, description: v }))} placeholder="Short description..." multiline />
-          <Btn label={savingSub ? "Saving..." : "Add Subject"} color="#10b981" icon="plus" onPress={async () => {
-            if (!newSub.examId || !newSub.name) return Alert.alert("Error", "Select exam and enter subject name");
-            setSavingSub(true);
-            try { await apiFetch("/notes/subjects", tok, "POST", { ...newSub, examId: Number(newSub.examId) }); setNewSub(p => ({ ...p, name: "", description: "" })); subQ.refetch(); }
-            catch (e: any) { Alert.alert("Error", e.message); }
-            finally { setSavingSub(false); }
-          }} />
-          <Text style={[pg.sectionHd, { color: colors.foreground, marginTop: 20 }]}>All Subjects ({subQ.items.length})</Text>
-          {subQ.loading && <ActivityIndicator color="#10b981" style={{ marginTop: 10 }} />}
-          {subQ.items.map(s => (
-            <View key={s.id} style={[pg.item, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <Text style={{ fontSize: 20 }}>📖</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={[pg.itemTitle, { color: colors.foreground }]}>{s.name}</Text>
-                <Text style={[pg.itemSub, { color: colors.mutedForeground }]}>{s.examName}</Text>
-              </View>
-              <Switch value={s.isActive} onValueChange={async (v) => {
-                await apiFetch(`/notes/subjects/${s.id}`, tok, "PATCH", { isActive: v }).catch(() => {});
-                subQ.refetch();
-              }} trackColor={{ true: "#10b981" }} />
-              <Pressable onPress={() => confirm("Delete this subject?", async () => {
-                await apiFetch(`/notes/subjects/${s.id}`, tok, "DELETE").catch(() => {});
-                subQ.refetch();
-              })} hitSlop={8}><Feather name="trash-2" size={16} color="#ef4444" /></Pressable>
-            </View>
-          ))}
-        </View>
-      )}
-
-      {/* ── NOTES TAB ── */}
-      {tab === "notes" && (
-        <View>
-          <Text style={[pg.sectionHd, { color: colors.foreground }]}>Upload PDF Note</Text>
-          <View style={{ marginBottom: 12 }}>
-            <Text style={[f.label, { color: colors.mutedForeground }]}>Select Exam</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              {exQ.items.map(e => (
-                <Pressable key={e.id} onPress={() => { setNewNote(p => ({ ...p, examId: String(e.id), subjectId: "" })); setSelExamIdN(e.id); }}
-                  style={[pg.pill, { backgroundColor: String(e.id) === newNote.examId ? "#f59e0b" : colors.card, borderColor: colors.border }]}>
-                  <Text style={{ color: String(e.id) === newNote.examId ? "#fff" : colors.foreground, fontSize: 12, fontWeight: "700" }}>{e.name}</Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-          </View>
-          {newNote.examId && subQ.items.filter(s => s.examId === Number(newNote.examId)).length > 0 && (
-            <View style={{ marginBottom: 12 }}>
-              <Text style={[f.label, { color: colors.mutedForeground }]}>Subject (optional)</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                <Pressable onPress={() => setNewNote(p => ({ ...p, subjectId: "" }))}
-                  style={[pg.pill, { backgroundColor: !newNote.subjectId ? "#f59e0b" : colors.card, borderColor: colors.border }]}>
-                  <Text style={{ color: !newNote.subjectId ? "#fff" : colors.foreground, fontSize: 12, fontWeight: "700" }}>All Subjects</Text>
-                </Pressable>
-                {subQ.items.filter(s => String(s.examId) === newNote.examId).map(s => (
-                  <Pressable key={s.id} onPress={() => setNewNote(p => ({ ...p, subjectId: String(s.id) }))}
-                    style={[pg.pill, { backgroundColor: String(s.id) === newNote.subjectId ? "#f59e0b" : colors.card, borderColor: colors.border }]}>
-                    <Text style={{ color: String(s.id) === newNote.subjectId ? "#fff" : colors.foreground, fontSize: 12, fontWeight: "700" }}>{s.name}</Text>
-                  </Pressable>
-                ))}
-              </ScrollView>
-            </View>
+              <View style={{ height: 1, backgroundColor: c.border, marginVertical: 16 }} />
+            </>
           )}
-          <Row label="Note Title" value={newNote.title} onChange={(v: string) => setNewNote(p => ({ ...p, title: v }))} placeholder="e.g. Reasoning Chapter 1 Notes" />
-          <Row label="PDF URL (Google Drive / S3 / etc.)" value={newNote.pdfUrl} onChange={(v: string) => setNewNote(p => ({ ...p, pdfUrl: v }))} placeholder="https://..." />
-          <Row label="Description (optional)" value={newNote.description} onChange={(v: string) => setNewNote(p => ({ ...p, description: v }))} placeholder="What is covered in these notes..." multiline />
-          <Row label="Tags (optional, comma separated)" value={newNote.tags} onChange={(v: string) => setNewNote(p => ({ ...p, tags: v }))} placeholder="reasoning, chapter-1, shortcuts" />
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 14 }}>
-            <Switch value={newNote.isPublished} onValueChange={(v) => setNewNote(p => ({ ...p, isPublished: v }))} trackColor={{ true: "#f59e0b" }} />
-            <Text style={[f.label, { color: colors.mutedForeground, marginBottom: 0 }]}>Publish immediately</Text>
+
+          <Text style={{ fontSize: 13, fontWeight: "800", color: c.foreground, marginBottom: 12 }}>+ New Section</Text>
+          <LabelInput label="Section Name *" value={newSecName} onChange={setNewSecName} placeholder="e.g. SSC, Banking, Railway" />
+          <LabelInput label="Icon (Emoji)" value={newSecIcon} onChange={setNewSecIcon} placeholder="📚" />
+          <Pressable onPress={addSection} disabled={saving}
+            style={{ backgroundColor: "#D97706", borderRadius: 12, paddingVertical: 12, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 8, opacity: saving ? 0.7 : 1 }}>
+            <Feather name="plus" size={16} color="#fff" />
+            <Text style={{ color: "#fff", fontWeight: "800", fontSize: 13 }}>{saving ? "Saving..." : "Add Section"}</Text>
+          </Pressable>
+        </View>
+      )}
+
+      {/* ── STEP 1: EXAM ── */}
+      {step === 1 && (
+        <View>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 }}>
+            <Text style={{ fontSize: 22 }}>{selSection?.icon}</Text>
+            <Text style={{ fontSize: 15, fontWeight: "800", color: c.foreground }}>{selSection?.name} → Exam</Text>
           </View>
-          <Btn label={savingNote ? "Saving..." : "Save Note"} color="#f59e0b" icon="save" onPress={async () => {
-            if (!newNote.examId || !newNote.title || !newNote.pdfUrl) return Alert.alert("Error", "Exam, title and PDF URL are required");
-            setSavingNote(true);
-            try {
-              await apiFetch("/notes/exam-notes", tok, "POST", {
-                examId: Number(newNote.examId),
-                subjectId: newNote.subjectId ? Number(newNote.subjectId) : null,
-                title: newNote.title, description: newNote.description,
-                pdfUrl: newNote.pdfUrl, tags: newNote.tags,
-                isPublished: newNote.isPublished,
-              });
-              setNewNote(p => ({ ...p, title: "", description: "", pdfUrl: "", tags: "", isPublished: false }));
-              noteQ.refetch();
-            } catch (e: any) { Alert.alert("Error", e.message); }
-            finally { setSavingNote(false); }
-          }} />
-          <Text style={[pg.sectionHd, { color: colors.foreground, marginTop: 20 }]}>All Notes ({noteQ.items.length})</Text>
-          {noteQ.loading && <ActivityIndicator color="#f59e0b" style={{ marginTop: 10 }} />}
-          {noteQ.items.map(n => (
-            <View key={n.id} style={[pg.item, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <Feather name="file-text" size={20} color="#f59e0b" />
-              <View style={{ flex: 1 }}>
-                <Text style={[pg.itemTitle, { color: colors.foreground }]} numberOfLines={1}>{n.title}</Text>
-                <Text style={[pg.itemSub, { color: colors.mutedForeground }]}>{n.examName}{n.subjectName ? ` › ${n.subjectName}` : ""}</Text>
-              </View>
-              <Switch value={n.isPublished} onValueChange={async (v) => {
-                await apiFetch(`/notes/exam-notes/${n.id}`, tok, "PATCH", { isPublished: v }).catch(() => {});
-                noteQ.refetch();
-              }} trackColor={{ true: "#f59e0b" }} />
-              <Pressable onPress={() => confirm("Delete this note?", async () => {
-                await apiFetch(`/notes/exam-notes/${n.id}`, tok, "DELETE").catch(() => {});
-                noteQ.refetch();
-              })} hitSlop={8}><Feather name="trash-2" size={16} color="#ef4444" /></Pressable>
-            </View>
-          ))}
+
+          {exams.length > 0 && (
+            <>
+              <Text style={{ fontSize: 11, fontWeight: "700", color: c.mutedForeground, marginBottom: 8, textTransform: "uppercase" }}>Existing Exams</Text>
+              {exams.map(e => (
+                <Pressable key={e.id} onPress={() => handleSelectExam(e)}
+                  style={{ flexDirection: "row", alignItems: "center", gap: 12, borderRadius: 14, borderWidth: 1.5,
+                    padding: 14, marginBottom: 8, backgroundColor: c.card, borderColor: c.border }}>
+                  <Text style={{ fontSize: 20 }}>{e.icon}</Text>
+                  <Text style={{ flex: 1, fontSize: 14, fontWeight: "700", color: c.foreground }}>{e.name}</Text>
+                  <Feather name="chevron-right" size={18} color="#6366f1" />
+                </Pressable>
+              ))}
+              <View style={{ height: 1, backgroundColor: c.border, marginVertical: 16 }} />
+            </>
+          )}
+
+          <Text style={{ fontSize: 13, fontWeight: "800", color: c.foreground, marginBottom: 12 }}>+ New Exam</Text>
+          <LabelInput label="Exam Name *" value={newExName} onChange={setNewExName} placeholder="e.g. SSC CGL, IBPS PO" />
+          <LabelInput label="Icon (Emoji)" value={newExIcon} onChange={setNewExIcon} placeholder="📝" />
+          <Pressable onPress={addExam} disabled={saving}
+            style={{ backgroundColor: "#6366f1", borderRadius: 12, paddingVertical: 12, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 8, opacity: saving ? 0.7 : 1 }}>
+            <Feather name="plus" size={16} color="#fff" />
+            <Text style={{ color: "#fff", fontWeight: "800", fontSize: 13 }}>{saving ? "Saving..." : "Add Exam"}</Text>
+          </Pressable>
+        </View>
+      )}
+
+      {/* ── STEP 2: SUBJECT ── */}
+      {step === 2 && (
+        <View>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 }}>
+            <Text style={{ fontSize: 20 }}>{selExam?.icon}</Text>
+            <Text style={{ fontSize: 15, fontWeight: "800", color: c.foreground }}>{selExam?.name} → Subject</Text>
+          </View>
+
+          {subjects.length > 0 && (
+            <>
+              <Text style={{ fontSize: 11, fontWeight: "700", color: c.mutedForeground, marginBottom: 8, textTransform: "uppercase" }}>Existing Subjects</Text>
+              {subjects.map(s => (
+                <Pressable key={s.id} onPress={() => handleSelectSubject(s)}
+                  style={{ flexDirection: "row", alignItems: "center", gap: 12, borderRadius: 14, borderWidth: 1.5,
+                    padding: 14, marginBottom: 8, backgroundColor: c.card, borderColor: c.border }}>
+                  <Text style={{ fontSize: 20 }}>📖</Text>
+                  <Text style={{ flex: 1, fontSize: 14, fontWeight: "700", color: c.foreground }}>{s.name}</Text>
+                  <Feather name="chevron-right" size={18} color="#10b981" />
+                </Pressable>
+              ))}
+              {/* Skip subject option */}
+              <Pressable onPress={() => { setSelSubject(null); setStep(3); }}
+                style={{ flexDirection: "row", alignItems: "center", gap: 8, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: "#10b981", marginBottom: 8, backgroundColor: "#10b98110" }}>
+                <Feather name="skip-forward" size={16} color="#10b981" />
+                <Text style={{ color: "#10b981", fontWeight: "700", fontSize: 13 }}>Skip — Subject ke bina note add karo</Text>
+              </Pressable>
+              <View style={{ height: 1, backgroundColor: c.border, marginVertical: 16 }} />
+            </>
+          )}
+
+          <Text style={{ fontSize: 13, fontWeight: "800", color: c.foreground, marginBottom: 12 }}>+ New Subject</Text>
+          <LabelInput label="Subject Name *" value={newSubName} onChange={setNewSubName} placeholder="e.g. Reasoning, Mathematics" />
+          <Pressable onPress={addSubject} disabled={saving}
+            style={{ backgroundColor: "#10b981", borderRadius: 12, paddingVertical: 12, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 8, opacity: saving ? 0.7 : 1 }}>
+            <Feather name="plus" size={16} color="#fff" />
+            <Text style={{ color: "#fff", fontWeight: "800", fontSize: 13 }}>{saving ? "Saving..." : "Add Subject"}</Text>
+          </Pressable>
+        </View>
+      )}
+
+      {/* ── STEP 3: NOTES ── */}
+      {step === 3 && (
+        <View>
+          {/* Breadcrumb */}
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 16, flexWrap: "wrap" }}>
+            <Text style={{ fontSize: 12, color: "#D97706", fontWeight: "700" }}>{selSection?.icon} {selSection?.name}</Text>
+            <Feather name="chevron-right" size={12} color={c.mutedForeground} />
+            <Text style={{ fontSize: 12, color: "#6366f1", fontWeight: "700" }}>{selExam?.icon} {selExam?.name}</Text>
+            {selSubject && <>
+              <Feather name="chevron-right" size={12} color={c.mutedForeground} />
+              <Text style={{ fontSize: 12, color: "#10b981", fontWeight: "700" }}>📖 {selSubject.name}</Text>
+            </>}
+          </View>
+
+          <Text style={{ fontSize: 15, fontWeight: "800", color: c.foreground, marginBottom: 16 }}>📄 Note Add Karo</Text>
+          <LabelInput label="Note Title *" value={noteTitle} onChange={setNoteTitle} placeholder="e.g. Reasoning Chapter 1" />
+          <LabelInput
+            label="PDF / Google Drive Link *"
+            value={notePdfUrl}
+            onChange={setNotePdfUrl}
+            placeholder="https://drive.google.com/file/d/... ya PDF link"
+            hint="💡 Google Drive share link paste karo — app mein khulega"
+          />
+          <LabelInput label="Description (optional)" value={noteDesc} onChange={setNoteDesc} placeholder="Is note mein kya covered hai..." />
+
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 16 }}>
+            <Switch value={notePublished} onValueChange={setNotePublished} trackColor={{ true: "#f59e0b" }} />
+            <Text style={{ fontSize: 13, color: c.foreground, fontWeight: "700" }}>Publish immediately</Text>
+          </View>
+
+          <Pressable onPress={saveNote} disabled={saving}
+            style={{ backgroundColor: "#f59e0b", borderRadius: 14, paddingVertical: 14, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 8, opacity: saving ? 0.7 : 1, marginBottom: 24 }}>
+            {saving ? <ActivityIndicator color="#fff" size="small" /> : <Feather name="save" size={16} color="#fff" />}
+            <Text style={{ color: "#fff", fontWeight: "800", fontSize: 14 }}>{saving ? "Saving..." : "Save Note"}</Text>
+          </Pressable>
+
+          {/* Existing Notes for this exam */}
+          {allNotes.length > 0 && (
+            <>
+              <Text style={{ fontSize: 13, fontWeight: "800", color: c.foreground, marginBottom: 10 }}>
+                📋 Notes in {selExam?.name} ({allNotes.length})
+              </Text>
+              {allNotes.map(n => (
+                <View key={n.id} style={{ flexDirection: "row", alignItems: "center", gap: 10, borderRadius: 14, borderWidth: 1, padding: 12, marginBottom: 8, backgroundColor: c.card, borderColor: c.border }}>
+                  <Feather name="file-text" size={20} color="#f59e0b" />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 13, fontWeight: "700", color: c.foreground }} numberOfLines={1}>{n.title}</Text>
+                    <Text style={{ fontSize: 10, color: c.mutedForeground, marginTop: 2 }}>
+                      {n.subjectName ?? "No subject"} · {n.isPublished ? "✅ Published" : "⏸ Draft"}
+                    </Text>
+                  </View>
+                  <Switch value={n.isPublished} onValueChange={async (v) => {
+                    try { await apiFetch(`/notes/exam-notes/${n.id}`, tok, "PATCH", { isPublished: v }); loadNotes(selExam!.id); } catch {}
+                  }} trackColor={{ true: "#f59e0b" }} />
+                  <Pressable onPress={() => {
+                    const msg = "Delete this note?";
+                    if (Platform.OS === "web") { if (window.confirm(msg)) apiFetch(`/notes/exam-notes/${n.id}`, tok, "DELETE").then(() => loadNotes(selExam!.id)).catch(() => {}); }
+                    else Alert.alert("Confirm", msg, [{ text: "Cancel" }, { text: "Delete", style: "destructive", onPress: () => apiFetch(`/notes/exam-notes/${n.id}`, tok, "DELETE").then(() => loadNotes(selExam!.id)).catch(() => {}) }]);
+                  }} hitSlop={8}>
+                    <Feather name="trash-2" size={16} color="#ef4444" />
+                  </Pressable>
+                </View>
+              ))}
+            </>
+          )}
         </View>
       )}
     </ScrollView>
   );
 }
-
-const pg = StyleSheet.create({
-  title: { fontSize: 22, fontWeight: "800" },
-  sub: { fontSize: 12, marginBottom: 16 },
-  migBanner: { backgroundColor: "#FEF3C7", borderRadius: 14, padding: 12, flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 16 },
-  tabs: { flexDirection: "row", gap: 8, marginBottom: 20, flexWrap: "wrap" },
-  tab: { borderRadius: 10, paddingHorizontal: 12, paddingVertical: 7, borderWidth: 1 },
-  tabTxt: { fontSize: 11, fontWeight: "800" },
-  sectionHd: { fontSize: 15, fontWeight: "800", marginBottom: 12 },
-  item: { flexDirection: "row", alignItems: "center", gap: 10, borderRadius: 14, borderWidth: 1, padding: 12, marginBottom: 8 },
-  itemTitle: { fontSize: 13, fontWeight: "700" },
-  itemSub: { fontSize: 10, marginTop: 2 },
-  pill: { borderRadius: 20, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 7, marginRight: 8 },
-});

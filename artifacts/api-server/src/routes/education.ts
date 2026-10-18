@@ -1327,20 +1327,48 @@ adminRouter.post("/courses", async (req, res) => {
   const exam = typeof req.body?.exam === "string" ? req.body.exam.trim() : "SSC";
   const category = typeof req.body?.category === "string" ? req.body.category.trim() : "SSC";
   const thumbnailUrl = typeof req.body?.thumbnailUrl === "string" ? req.body.thumbnailUrl.trim() : "";
+  const lessons: Array<{ title: string; kind: string; resourceUrl: string; sortOrder: number }> =
+    Array.isArray(req.body?.lessons) ? req.body.lessons : [];
 
   if (!title) {
     res.status(422).json({ message: "Course title is required." });
     return;
   }
+  const client = await pool.connect();
   try {
-    const result = await pool.query<{ id: number }>(
-      `INSERT INTO courses (title, description, instructor, exam, category, thumbnail_url, published)
-       VALUES ($1, $2, $3, $4, $5, $6, true) RETURNING id`,
-      [title, description, instructor, exam, category, thumbnailUrl],
+    await client.query("BEGIN");
+    // Create course
+    const courseResult = await client.query<{ id: number }>(
+      `INSERT INTO courses (title, description, instructor, exam, category, thumbnail_url, published, lesson_count)
+       VALUES ($1, $2, $3, $4, $5, $6, true, $7) RETURNING id`,
+      [title, description, instructor, exam, category, thumbnailUrl, lessons.length],
     );
-    res.status(201).json({ courseId: result.rows[0]!.id, title });
+    const courseId = courseResult.rows[0]!.id;
+
+    if (lessons.length > 0) {
+      // Auto-create default chapter
+      const chapterResult = await client.query<{ id: number }>(
+        `INSERT INTO course_chapters (course_id, title, sort_order) VALUES ($1, $2, 1) RETURNING id`,
+        [courseId, "Course Content"],
+      );
+      const chapterId = chapterResult.rows[0]!.id;
+
+      // Insert all lessons
+      for (const lesson of lessons) {
+        await client.query(
+          `INSERT INTO lessons (chapter_id, title, kind, resource_url, sort_order, published)
+           VALUES ($1, $2, $3, $4, $5, true)`,
+          [chapterId, lesson.title || `Lesson ${lesson.sortOrder}`, lesson.kind || "video", lesson.resourceUrl || "", lesson.sortOrder],
+        );
+      }
+    }
+    await client.query("COMMIT");
+    res.status(201).json({ courseId, title, lessonCount: lessons.length });
   } catch (error) {
+    await client.query("ROLLBACK");
     sendServerError(res, error);
+  } finally {
+    client.release();
   }
 });
 
@@ -1423,6 +1451,54 @@ adminRouter.delete("/banners/:id", async (req, res) => {
       return;
     }
     res.json({ message: "Banner deleted successfully.", id: bannerId });
+  } catch (error) {
+    sendServerError(res, error);
+  }
+});
+
+// Admin: Send notification to all users
+adminRouter.post("/notify-all", async (req, res) => {
+  const title = typeof req.body?.title === "string" ? req.body.title.trim() : "";
+  const body = typeof req.body?.body === "string" ? req.body.body.trim() : "";
+  if (!title || !body) {
+    res.status(422).json({ message: "Title and body are required." });
+    return;
+  }
+  try {
+    // Store notification in DB (create table if not exists)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS notifications (
+        id SERIAL PRIMARY KEY,
+        title TEXT NOT NULL,
+        body TEXT NOT NULL,
+        sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        sent_by INTEGER
+      )
+    `);
+    await pool.query(
+      `INSERT INTO notifications (title, body, sent_by) VALUES ($1, $2, $3)`,
+      [title, body, (req as any).authUser?.id ?? null],
+    );
+    // In future: integrate with push notification service (FCM/Expo)
+    res.json({ message: "Notification logged. Push service se connect karo for live delivery.", title, body });
+  } catch (error) {
+    sendServerError(res, error);
+  }
+});
+
+// Admin: Update profile photo
+adminRouter.patch("/profile/photo", async (req, res) => {
+  const photoUrl = typeof req.body?.photoUrl === "string" ? req.body.photoUrl.trim() : "";
+  if (!photoUrl) {
+    res.status(422).json({ message: "Photo URL required." });
+    return;
+  }
+  try {
+    await pool.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS photo_url TEXT NOT NULL DEFAULT ''
+    `);
+    await pool.query(`UPDATE users SET photo_url = $1 WHERE id = $2`, [photoUrl, (req as any).authUser?.id]);
+    res.json({ message: "Profile photo updated.", photoUrl });
   } catch (error) {
     sendServerError(res, error);
   }
