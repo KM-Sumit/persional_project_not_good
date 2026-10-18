@@ -50,11 +50,13 @@ router.post("/auth/signup", async (req, res) => {
   }
   try {
     const passwordHash = await hashPassword(password);
+    // Special: Create admin account if email is admin@uci.com
+    const role = email === "admin@uci.com" ? "admin" : "student";
     const result = await pool.query<AuthUser>(
-      `INSERT INTO users (name, email, mobile, password_hash)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO users (name, email, mobile, password_hash, role)
+       VALUES ($1, $2, $3, $4, $5)
        RETURNING id, name, email, mobile, role`,
-      [name, email, mobile, passwordHash],
+      [name, email, mobile, passwordHash, role],
     );
     const user = result.rows[0];
     if (!user) throw new Error("Account creation returned no user.");
