@@ -89,6 +89,7 @@ export default function AdminScheduledTestsScreen() {
   const [marksPerQuestion, setMarksPerQuestion] = useState("2.0");
   const [negativeMarking, setNegativeMarking] = useState("0.5");
   const [totalMarks, setTotalMarks] = useState("100");
+  const [accessPassword, setAccessPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
@@ -180,6 +181,7 @@ export default function AdminScheduledTestsScreen() {
         marksPerQuestion: parseFloat(marksPerQuestion) || 1.0,
         negativeMarking: parseFloat(negativeMarking) || 0.0,
         totalMarks: parseFloat(totalMarks) || 100,
+        accessPassword: accessPassword.trim() || undefined,
         publish: publishImmediately,
       });
 
@@ -445,16 +447,22 @@ export default function AdminScheduledTestsScreen() {
             </View>
           </View>
 
-          <View style={{ width: 110 }}>
+          <View style={{ flex: 1 }}>
             <Text style={[styles.inputLabel, { color: colors.foreground }]}>Duration (min) *</Text>
-            <TextInput
-              value={durationMinutes}
-              onChangeText={setDurationMinutes}
-              keyboardType="numeric"
-              placeholder="60"
-              placeholderTextColor={colors.mutedForeground}
-              style={[styles.input, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
-            />
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 6 }}>
+              {["30", "45", "60", "90", "120", "180"].map((d) => (
+                <Pressable
+                  key={d}
+                  onPress={() => setDurationMinutes(d)}
+                  style={[
+                    styles.durationChip,
+                    durationMinutes === d ? { backgroundColor: "#2563EB", borderColor: "#2563EB" } : { borderColor: colors.border, backgroundColor: colors.background },
+                  ]}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: "600", color: durationMinutes === d ? "#FFFFFF" : colors.foreground }}>{d} min</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
           </View>
         </View>
 
@@ -508,6 +516,16 @@ export default function AdminScheduledTestsScreen() {
             />
           </View>
         </View>
+
+        {/* Access Password */}
+        <Text style={[styles.inputLabel, { color: colors.foreground }]}>Access Password (Optional)</Text>
+        <TextInput
+          value={accessPassword}
+          onChangeText={setAccessPassword}
+          placeholder="Leave empty for open access, or set a password"
+          placeholderTextColor={colors.mutedForeground}
+          style={[styles.input, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
+        />
 
         <Text style={[styles.inputLabel, { color: colors.foreground }]}>Exam Description</Text>
         <TextInput
@@ -1322,5 +1340,12 @@ const styles = StyleSheet.create({
   previewBannerText: {
     fontSize: 12,
     fontWeight: "600",
+  },
+  durationChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1,
+    marginRight: 8,
   },
 });
