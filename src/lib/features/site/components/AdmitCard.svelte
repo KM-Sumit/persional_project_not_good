@@ -73,11 +73,6 @@
 		text-transform: uppercase;
 		line-height: 1.1;
 	}
-	.admit-kicker span {
-		letter-spacing: 0;
-		margin-left: 0.375rem;
-		color: hsl(var(--primary));
-	}
 	.admit-org {
 		font-size: 0.75rem;
 		color: hsl(var(--muted-foreground));

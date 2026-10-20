@@ -463,11 +463,6 @@
 		font-weight: 700;
 		font-size: 1.25rem;
 	}
-	.step h3 span {
-		font-size: 0.875rem;
-		font-weight: 600;
-		color: hsl(var(--muted-foreground));
-	}
 	.step p {
 		margin-top: 0.25rem;
 		font-size: 0.9375rem;
@@ -565,10 +560,6 @@
 		font-weight: 800;
 		font-size: clamp(1.625rem, 1.3rem + 1.3vw, 2.375rem);
 		line-height: 1.1;
-	}
-	.cta-band p {
-		margin-top: 0.375rem;
-		color: hsl(0 0% 100% / 0.7);
 	}
 	.cta-actions {
 		position: relative;

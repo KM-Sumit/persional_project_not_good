@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { enhance } from '$app/forms';
 	import { ClipboardCopy, KeyRound, Search, UserMinus, UserPlus, Users } from '@lucide/svelte';
 	import { Button, EmptyState, Sheet, toast } from '#lib/components/ui';
@@ -12,7 +13,7 @@
 	let shownPassword = $state<string | null>(null);
 	let confirmRotate = $state(false);
 	let rotateForm = $state<HTMLFormElement>();
-	let access = $state(data.test.access);
+	let access = $state(untrack(() => data.test.access));
 	$effect(() => {
 		access = data.test.access;
 	});

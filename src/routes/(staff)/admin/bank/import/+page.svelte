@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { enhance } from '$app/forms';
 	import { CircleAlert, CircleCheck, Copy, FileUp, Upload } from '@lucide/svelte';
 	import { Badge, Button, PageHeader, toast } from '#lib/components/ui';
@@ -7,7 +8,7 @@
 	let { data, form } = $props();
 
 	let text = $state('');
-	let moduleId = $state(data.moduleId);
+	let moduleId = $state(untrack(() => data.moduleId));
 	let newModule = $state('');
 	let busy = $state<'preview' | 'import' | null>(null);
 	let showIssuesOnly = $state(false);

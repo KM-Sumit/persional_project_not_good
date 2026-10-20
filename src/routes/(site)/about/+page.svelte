@@ -127,11 +127,6 @@
 		font-weight: 800;
 		font-size: 1.5rem;
 	}
-	.words h3 span {
-		font-size: 1rem;
-		font-weight: 600;
-		color: hsl(var(--primary));
-	}
 	.words p {
 		margin-top: 0.375rem;
 		color: hsl(var(--muted-foreground));

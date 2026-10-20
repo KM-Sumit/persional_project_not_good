@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { deserialize, enhance } from '$app/forms';
 	import { goto } from '$app/navigation';
 	import { Archive, Ban, Copy, EyeOff, Send, Trash2 } from '@lucide/svelte';
@@ -11,7 +12,7 @@
 	const t = $derived(data.test);
 
 	// Edit draft: re-seeded whenever the saved test changes.
-	let e = $state({ ...data.test });
+	let e = $state(untrack(() => ({ ...data.test })));
 	$effect(() => {
 		e = { ...data.test };
 	});

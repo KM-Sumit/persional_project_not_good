@@ -140,12 +140,6 @@
 		font-size: 1.5rem;
 		margin-bottom: 1rem;
 	}
-	.form-title span {
-		display: block;
-		font-size: 1rem;
-		font-weight: 600;
-		color: hsl(var(--muted-foreground));
-	}
 	fieldset {
 		border: 0;
 		padding: 0;

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { enhance } from '$app/forms';
 	import { invalidateAll } from '$app/navigation';
 	import { page } from '$app/state';
@@ -11,16 +12,16 @@
 	let { data } = $props();
 
 	type Item = GeneratedQuestion & { key: number; state: 'pending' | 'accepted' | 'rejected'; editing: boolean };
-	let job = $state<AiJobDto>(data.job);
+	let job = $state<AiJobDto>(untrack(() => data.job)); // seeded once, then kept fresh by polling
 	let items = $state<Item[]>([]);
 	let filter = $state('all');
-	let moduleId = $state(data.modules[0]?.id ?? '');
+	let moduleId = $state(untrack(() => data.modules[0]?.id ?? ''));
 	let newModule = $state('');
 	let makeTest = $state(page.url.searchParams.get('then') === 'test');
 	let busy = $state(false);
 
 	const seed = (j: AiJobDto) => (items = j.questions.map((q, key) => ({ ...q, options: [...q.options], key, state: 'pending', editing: false })));
-	seed(data.job);
+	untrack(() => seed(data.job));
 
 	const working = $derived(job.status === 'queued' || job.status === 'running');
 	// Poll while the job runs; when it settles, reload so the review grid fills.
