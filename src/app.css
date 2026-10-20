@@ -63,7 +63,7 @@
 	--gutter: clamp(1rem, 0.55rem + 2vw, 2rem);
 	--text-title: clamp(1.75rem, 1.4rem + 1.5vw, 2.5rem);
 
-	--ease-snappy: cubic-bezier(0.22, 1, 0.36, 1);
+	--ease-snappy: cubic-bezier(0.2, 0.8, 0.2, 1);
 	--ease-smooth: cubic-bezier(0.25, 0.1, 0.25, 1);
 	--ease-material: cubic-bezier(0.2, 0, 0, 1);
 	--ease-interactive: var(--ease-material);
@@ -100,7 +100,7 @@
 :root[data-platform='ios'] {
 	--radius: 12px;
 	--tabbar-space: calc(56px + 8px + max(var(--safe-bottom), 0.75rem) + 0.5rem);
-	--ease-interactive: cubic-bezier(0.175, 0.885, 0.32, 1.05);
+	--ease-interactive: cubic-bezier(0.32, 0.72, 0, 1);
 	--dur-fast: 0.22s;
 	--dur-page: 0.26s;
 }
@@ -748,19 +748,16 @@ a.card:hover {
 @keyframes md-fade-through {
 	from {
 		opacity: 0;
-		transform: scale(0.985);
 	}
 }
 @keyframes md-fade-back {
 	from {
 		opacity: 0;
-		transform: scale(1.015);
 	}
 }
 @keyframes md-fade {
 	from {
 		opacity: 0;
-		transform: translateY(4px);
 	}
 }
 

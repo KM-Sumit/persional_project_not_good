@@ -11,8 +11,10 @@
 	const path = $derived(page.url.pathname);
 	const exam = $derived(/^\/attempts\/[^/]+$/.test(path));
 
-	let nav = $state<NavDirection | undefined>();
+	/** Direction is tied to the destination, so the outgoing page never plays it too. */
+	let enter = $state<{ path: string; dir: NavDirection } | undefined>();
 	let clearTimer: ReturnType<typeof setTimeout> | undefined;
+	const nav = $derived(enter?.path === path ? enter.dir : undefined);
 
 	beforeNavigate((n) => {
 		if (!n.from?.url || !n.to?.url || n.willUnload) return;
@@ -21,28 +23,32 @@
 			n.type === 'popstate' &&
 			(n.event as PopStateEvent & { hasUAVisualTransition?: boolean }).hasUAVisualTransition
 		) {
-			nav = undefined;
+			enter = undefined;
 			return;
 		}
 		const link = n.type === 'link' ? (n.event.target as Element | null)?.closest('a') : null;
-		nav = navDirection(n.from.url.pathname, n.to.url.pathname, {
-			pop: n.type === 'popstate' ? n.delta : 0,
-			back: link?.hasAttribute('data-back')
-		});
+		const to = n.to.url.pathname;
+		enter = {
+			path: to,
+			dir: navDirection(n.from.url.pathname, to, {
+				pop: n.type === 'popstate' ? n.delta : 0,
+				back: link?.hasAttribute('data-back')
+			})
+		};
 		const roots = ['/home', '/tests', '/study', '/profile'];
 		const fromTab = roots.some(
 			(r) => n.from!.url.pathname === r || n.from!.url.pathname.startsWith(r + '/')
 		);
-		const toTab = roots.some(
-			(r) => n.to!.url.pathname === r || n.to!.url.pathname.startsWith(r + '/')
-		);
+		const toTab = roots.some((r) => to === r || to.startsWith(r + '/'));
 		if (fromTab && toTab) haptic();
 		clearTimeout(clearTimer);
-		clearTimer = setTimeout(() => (nav = undefined), 600);
+		clearTimer = setTimeout(() => {
+			if (enter?.path === to) enter = undefined;
+		}, 400);
 	});
 
 	function endEnter(e: AnimationEvent) {
-		if (e.target === e.currentTarget) nav = undefined;
+		if (e.target === e.currentTarget) enter = undefined;
 	}
 </script>
 
