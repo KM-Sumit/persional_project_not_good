@@ -1,66 +1,27 @@
-# See https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files for more about ignoring files.
-
-# compiled output
-dist
-tmp
-out-tsc
-*.tsbuildinfo
-.expo
-.expo-shared
-
-# dependencies
 node_modules
 
-# IDEs and editors
-/.idea
-.project
-.classpath
-.c9/
-*.launch
-.settings/
-*.sublime-workspace
+# Output
+.output
+.vercel
+.netlify
+.wrangler
+/.svelte-kit
+/build
 
-# IDE - VSCode
-.vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
-
-# misc
-/.sass-cache
-/connect.lock
-/coverage
-/libpeerconnection.log
-npm-debug.log
-yarn-error.log
-testem.log
-/typings
-
-# System Files
+# OS
 .DS_Store
 Thumbs.db
 
-# Replit
-.cache/
-.local/
-
-# Environment variables — NEVER commit real secrets
+# Env
 .env
 .env.*
 !.env.example
+!.env.test
 
-# Large binary / zip files
+# Prototype archive and local secrets
 *.zip
-*.tar.gz
+legacy/password.md
 
-# AI agent folders
-.agents/
-.cursor/
-.gemini/
-
-# GitHub-specific rule files
-.cursor/rules/nx-rules.mdc
-.github/instructions/nx.instructions.md
-
-.vercel
+# Vite
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*

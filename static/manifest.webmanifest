@@ -1,0 +1,16 @@
+{
+	"name": "UCI Exam Prep",
+	"short_name": "UCI",
+	"display": "standalone",
+	"start_url": "/home",
+	"background_color": "#FAF6EE",
+	"theme_color": "#172A3E",
+	"icons": [
+		{
+			"src": "/favicon.svg",
+			"sizes": "any",
+			"type": "image/svg+xml",
+			"purpose": "any"
+		}
+	]
+}

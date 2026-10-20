@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>UCI page flow</title>
+		<style>
+			:root {
+				color-scheme: light;
+				--ink: #12151c;
+				--muted: #5c6570;
+				--line: #e4e7ee;
+				--paper: #f4f5f8;
+				--ok: #0f7a45;
+			}
+			* { box-sizing: border-box; }
+			body {
+				margin: 0;
+				font-family: "IBM Plex Sans", system-ui, sans-serif;
+				color: var(--ink);
+				background: var(--paper);
+			}
+			header.top {
+				position: sticky;
+				top: 0;
+				z-index: 2;
+				background: rgba(255, 255, 255, 0.92);
+				border-bottom: 1px solid var(--line);
+				backdrop-filter: blur(12px);
+				padding: 0.85rem 1.25rem 0.7rem;
+			}
+			header.top h1 {
+				margin: 0;
+				font-size: 1.15rem;
+				letter-spacing: -0.03em;
+			}
+			header.top p {
+				margin: 0.2rem 0 0.55rem;
+				color: var(--muted);
+				font-size: 0.85rem;
+			}
+			nav {
+				display: flex;
+				gap: 0.4rem;
+				overflow-x: auto;
+				padding-bottom: 0.15rem;
+			}
+			nav a {
+				flex: none;
+				color: var(--ink);
+				text-decoration: none;
+				font-size: 0.78rem;
+				font-weight: 650;
+				border: 1px solid var(--line);
+				background: white;
+				border-radius: 999px;
+				padding: 0.28rem 0.65rem;
+			}
+			main { padding: 1.25rem; display: flex; flex-direction: column; gap: 1.5rem; }
+			.group {
+				margin: 0.4rem 0 0;
+				font-size: 0.72rem;
+				letter-spacing: 0.08em;
+				text-transform: uppercase;
+				color: var(--muted);
+			}
+			section {
+				background: white;
+				border: 1px solid var(--line);
+				border-radius: 16px;
+				padding: 1rem 1rem 1.15rem;
+			}
+			section h2 {
+				margin: 0;
+				font-size: 1.05rem;
+				letter-spacing: -0.02em;
+			}
+			section .meta {
+				margin: 0.25rem 0 0.85rem;
+				color: var(--muted);
+				font-size: 0.82rem;
+			}
+			.ok { color: var(--ok); font-weight: 700; }
+			.row {
+				display: grid;
+				grid-template-columns: repeat(3, minmax(0, 1fr));
+				gap: 0.85rem;
+				align-items: start;
+			}
+			.solo { grid-template-columns: minmax(0, 42rem); }
+			figure { margin: 0; }
+			figcaption {
+				margin-bottom: 0.4rem;
+				font-size: 0.75rem;
+				font-weight: 700;
+				color: var(--muted);
+			}
+			img {
+				width: 100%;
+				height: auto;
+				display: block;
+				border: 1px solid var(--line);
+				border-radius: 12px;
+				background: #eef0f4;
+			}
+			@media (max-width: 900px) {
+				.row { grid-template-columns: 1fr; }
+			}
+		</style>
+	</head>
+	<body>
+		<header class="top">
+			<h1>UCI page flow</h1>
+			<p>Phone 390, tablet 768, desktop 1440 · syllabus + lesson pages · markdown notes · overlay scroll (no gutter).</p>
+			<nav>
+				<a href="#landing">Landing</a>
+				<a href="#signin">Sign in</a>
+				<a href="#home">Home</a>
+				<a href="#tests">Tests</a>
+				<a href="#test-code">Code</a>
+				<a href="#test-password">Password</a>
+				<a href="#test-module">Module</a>
+				<a href="#attempt">Attempt</a>
+				<a href="#result">Result</a>
+				<a href="#study">Study</a>
+				<a href="#course">Syllabus</a>
+				<a href="#lesson">Lesson</a>
+				<a href="#note">Note</a>
+				<a href="#profile">You</a>
+				<a href="#admin">Admin</a>
+				<a href="#terms">Terms</a>
+				<a href="#privacy">Privacy</a>
+				<a href="#cookies">Cookies</a>
+			</nav>
+		</header>
+		<main>
+			<p class="group">Public</p>
+			<section id="landing">
+				<h2>Landing</h2>
+				<p class="meta">/ · <span class="ok">ok</span></p>
+				<div class="row">
+					<figure><figcaption>Phone</figcaption><img src="shots/landing-phone.png" alt="Landing on a phone" /></figure>
+					<figure><figcaption>Tablet</figcaption><img src="shots/landing-tablet.png" alt="Landing on a tablet" /></figure>
+					<figure><figcaption>Desktop</figcaption><img src="shots/landing-desktop.png" alt="Landing on a desktop" /></figure>
+				</div>
+			</section>
+			<section id="signin">
+				<h2>Sign in</h2>
+				<p class="meta">/signin · <span class="ok">ok</span></p>
+				<div class="row">
+					<figure><figcaption>Phone</figcaption><img src="shots/signin-phone.png" alt="Sign in on a phone" /></figure>
+					<figure><figcaption>Tablet</figcaption><img src="shots/signin-tablet.png" alt="Sign in on a tablet" /></figure>
+					<figure><figcaption>Desktop</figcaption><img src="shots/signin-desktop.png" alt="Sign in on a desktop" /></figure>
+				</div>
+			</section>
+
+			<p class="group">Signed in</p>
+			<section id="home">
+				<h2>Home</h2>
+				<p class="meta">/home · <span class="ok">ok</span></p>
+				<div class="row">
+					<figure><figcaption>Phone</figcaption><img src="shots/home-phone.png" alt="Home on a phone" /></figure>
+					<figure><figcaption>Tablet</figcaption><img src="shots/home-tablet.png" alt="Home on a tablet" /></figure>
+					<figure><figcaption>Desktop</figcaption><img src="shots/home-desktop.png" alt="Home on a desktop" /></figure>
+				</div>
+			</section>
+			<section id="tests">
+				<h2>Tests</h2>
+				<p class="meta">/tests · code, password, and module papers · <span class="ok">ok</span></p>
+				<div class="row">
+					<figure><figcaption>Phone</figcaption><img src="shots/tests-phone.png" alt="Tests on a phone" /></figure>
+					<figure><figcaption>Tablet</figcaption><img src="shots/tests-tablet.png" alt="Tests on a tablet" /></figure>
+					<figure><figcaption>Desktop</figcaption><img src="shots/tests-desktop.png" alt="Tests on a desktop" /></figure>
+				</div>
+			</section>
+			<section id="test-code">
+				<h2>Code paper</h2>
+				<p class="meta">/tests/… · PCT80 · <span class="ok">ok</span></p>
+				<div class="row">
+					<figure><figcaption>Phone</figcaption><img src="shots/test-code-phone.png" alt="Code paper on a phone" /></figure>
+					<figure><figcaption>Tablet</figcaption><img src="shots/test-code-tablet.png" alt="Code paper on a tablet" /></figure>
+					<figure><figcaption>Desktop</figcaption><img src="shots/test-code-desktop.png" alt="Code paper on a desktop" /></figure>
+				</div>
+			</section>
+			<section id="test-password">
+				<h2>Password paper</h2>
+				<p class="meta">/tests/… · already unlocked for Asha, so this shows Start · <span class="ok">ok</span></p>
+				<div class="row">
+					<figure><figcaption>Phone</figcaption><img src="shots/test-password-phone.png" alt="Password paper on a phone" /></figure>
+					<figure><figcaption>Tablet</figcaption><img src="shots/test-password-tablet.png" alt="Password paper on a tablet" /></figure>
+					<figure><figcaption>Desktop</figcaption><img src="shots/test-password-desktop.png" alt="Password paper on a desktop" /></figure>
+				</div>
+			</section>
+			<section id="test-module">
+				<h2>Module paper</h2>
+				<p class="meta">/tests/… · previous paper from Arithmetic foundations · <span class="ok">ok</span></p>
+				<div class="row">
+					<figure><figcaption>Phone</figcaption><img src="shots/test-module-phone.png" alt="Module paper on a phone" /></figure>
+					<figure><figcaption>Tablet</figcaption><img src="shots/test-module-tablet.png" alt="Module paper on a tablet" /></figure>
+					<figure><figcaption>Desktop</figcaption><img src="shots/test-module-desktop.png" alt="Module paper on a desktop" /></figure>
+				</div>
+			</section>
+			<section id="attempt">
+				<h2>Attempt</h2>
+				<p class="meta">/attempts/… · viewport, answer bar pinned · <span class="ok">ok</span></p>
+				<div class="row">
+					<figure><figcaption>Phone</figcaption><img src="shots/attempt-phone.png" alt="Attempt on a phone" /></figure>
+					<figure><figcaption>Tablet</figcaption><img src="shots/attempt-tablet.png" alt="Attempt on a tablet" /></figure>
+					<figure><figcaption>Desktop</figcaption><img src="shots/attempt-desktop.png" alt="Attempt on a desktop" /></figure>
+				</div>
+			</section>
+			<section id="result">
+				<h2>Result</h2>
+				<p class="meta">/attempts/…/result · <span class="ok">ok</span></p>
+				<div class="row">
+					<figure><figcaption>Phone</figcaption><img src="shots/result-phone.png" alt="Result on a phone" /></figure>
+					<figure><figcaption>Tablet</figcaption><img src="shots/result-tablet.png" alt="Result on a tablet" /></figure>
+					<figure><figcaption>Desktop</figcaption><img src="shots/result-desktop.png" alt="Result on a desktop" /></figure>
+				</div>
+			</section>
+			<section id="study">
+				<h2>Study</h2>
+				<p class="meta">/study · /courses redirects here · <span class="ok">ok</span></p>
+				<div class="row">
+					<figure><figcaption>Phone</figcaption><img src="shots/study-phone.png" alt="Study on a phone" /></figure>
+					<figure><figcaption>Tablet</figcaption><img src="shots/study-tablet.png" alt="Study on a tablet" /></figure>
+					<figure><figcaption>Desktop</figcaption><img src="shots/study-desktop.png" alt="Study on a desktop" /></figure>
+				</div>
+			</section>
+			<section id="course">
+				<h2>Course syllabus</h2>
+				<p class="meta">/courses/… · chapter list, no inline player · <span class="ok">ok</span></p>
+				<div class="row">
+					<figure><figcaption>Phone</figcaption><img src="shots/course-phone.png" alt="Course syllabus on a phone" /></figure>
+					<figure><figcaption>Tablet</figcaption><img src="shots/course-tablet.png" alt="Course syllabus on a tablet" /></figure>
+					<figure><figcaption>Desktop</figcaption><img src="shots/course-desktop.png" alt="Course syllabus on a desktop" /></figure>
+				</div>
+			</section>
+			<section id="lesson">
+				<h2>Lesson</h2>
+				<p class="meta">/courses/…/lessons/… · video + markdown + complete · <span class="ok">ok</span></p>
+				<div class="row">
+					<figure><figcaption>Phone</figcaption><img src="shots/lesson-phone.png" alt="Lesson on a phone" /></figure>
+					<figure><figcaption>Tablet</figcaption><img src="shots/lesson-tablet.png" alt="Lesson on a tablet" /></figure>
+					<figure><figcaption>Desktop</figcaption><img src="shots/lesson-desktop.png" alt="Lesson on a desktop" /></figure>
+				</div>
+			</section>
+			<section id="note">
+				<h2>Note</h2>
+				<p class="meta">/notes/… · markdown sheet + prev/next · <span class="ok">ok</span></p>
+				<div class="row">
+					<figure><figcaption>Phone</figcaption><img src="shots/note-phone.png" alt="Note on a phone" /></figure>
+					<figure><figcaption>Tablet</figcaption><img src="shots/note-tablet.png" alt="Note on a tablet" /></figure>
+					<figure><figcaption>Desktop</figcaption><img src="shots/note-desktop.png" alt="Note on a desktop" /></figure>
+				</div>
+			</section>
+			<section id="profile">
+				<h2>You</h2>
+				<p class="meta">/profile · <span class="ok">ok</span></p>
+				<div class="row">
+					<figure><figcaption>Phone</figcaption><img src="shots/profile-phone.png" alt="Profile on a phone" /></figure>
+					<figure><figcaption>Tablet</figcaption><img src="shots/profile-tablet.png" alt="Profile on a tablet" /></figure>
+					<figure><figcaption>Desktop</figcaption><img src="shots/profile-desktop.png" alt="Profile on a desktop" /></figure>
+				</div>
+			</section>
+			<section id="admin">
+				<h2>Admin</h2>
+				<p class="meta">/admin · desktop only · <span class="ok">ok</span></p>
+				<div class="row solo">
+					<figure><figcaption>Desktop</figcaption><img src="shots/admin-desktop.png" alt="Admin studio on a desktop" /></figure>
+				</div>
+			</section>
+
+			<p class="group">Legal</p>
+			<section id="terms">
+				<h2>Terms</h2>
+				<p class="meta">/terms · <span class="ok">ok</span></p>
+				<div class="row">
+					<figure><figcaption>Phone</figcaption><img src="shots/terms-phone.png" alt="Terms on a phone" /></figure>
+					<figure><figcaption>Tablet</figcaption><img src="shots/terms-tablet.png" alt="Terms on a tablet" /></figure>
+					<figure><figcaption>Desktop</figcaption><img src="shots/terms-desktop.png" alt="Terms on a desktop" /></figure>
+				</div>
+			</section>
+			<section id="privacy">
+				<h2>Privacy</h2>
+				<p class="meta">/privacy · <span class="ok">ok</span></p>
+				<div class="row">
+					<figure><figcaption>Phone</figcaption><img src="shots/privacy-phone.png" alt="Privacy on a phone" /></figure>
+					<figure><figcaption>Tablet</figcaption><img src="shots/privacy-tablet.png" alt="Privacy on a tablet" /></figure>
+					<figure><figcaption>Desktop</figcaption><img src="shots/privacy-desktop.png" alt="Privacy on a desktop" /></figure>
+				</div>
+			</section>
+			<section id="cookies">
+				<h2>Cookies</h2>
+				<p class="meta">/cookies · <span class="ok">ok</span></p>
+				<div class="row">
+					<figure><figcaption>Phone</figcaption><img src="shots/cookies-phone.png" alt="Cookies on a phone" /></figure>
+					<figure><figcaption>Tablet</figcaption><img src="shots/cookies-tablet.png" alt="Cookies on a tablet" /></figure>
+					<figure><figcaption>Desktop</figcaption><img src="shots/cookies-desktop.png" alt="Cookies on a desktop" /></figure>
+				</div>
+			</section>
+		</main>
+	</body>
+</html>

@@ -1,16 +1,9 @@
 {
-  "extends": "./tsconfig.base.json",
-  "compileOnSave": false,
-  "files": [],
-  "references": [
-    {
-      "path": "./lib/db"
-    },
-    {
-      "path": "./lib/api-client-react"
-    },
-    {
-      "path": "./lib/api-zod"
-    }
-  ]
+	"extends": "$app/tsconfig",
+	"compilerOptions": {
+		"strict": true,
+		"types": ["$app/types", "bun"]
+	},
+	"include": ["src/**/*.ts", "src/**/*.svelte", "vite.config.ts", "scripts/**/*.ts"],
+	"exclude": ["src/service-worker.ts"]
 }
