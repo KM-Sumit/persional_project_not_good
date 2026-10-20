@@ -1,74 +1,40 @@
 <!doctype html>
-<html lang="en">
+<html lang="en-IN">
 	<head>
 		<meta charset="utf-8" />
-		<script>
-			/* A dev worker cached Vite's client and its HMR token. Drop it once, then reload. */
+		<script nonce="%sveltekit.nonce%">
+			// Platform + theme before first paint, so platform chrome and motion never flash.
+			// iPadOS reports "Macintosh"; touch points give it away. Mirrors src/lib/client/platform.ts.
 			(function () {
-				var host = location.hostname;
-				if ((host !== 'localhost' && host !== '127.0.0.1') || !('serviceWorker' in navigator)) return;
-				if (sessionStorage.getItem('uci-dev-sw') === 'off') return;
-				navigator.serviceWorker.getRegistrations().then(function (regs) {
-					if (!regs.length) return;
-					sessionStorage.setItem('uci-dev-sw', 'off');
-					Promise.all(
-						regs.map(function (reg) {
-							return reg.unregister();
-						})
-					)
-						.then(function () {
-							return caches.keys();
-						})
-						.then(function (keys) {
-							return Promise.all(
-								keys.map(function (key) {
-									return caches.delete(key);
-								})
-							);
-						})
-						.then(function () {
-							location.reload();
-						});
-				});
-			})();
-		</script>
-		<script>
-			/* Platform + theme before first paint — same pattern as CampusQuiz. */
-			(function () {
-				var ua = navigator.userAgent || '';
-				var ios =
-					/iPhone|iPad|iPod/.test(ua) ||
-					(/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
-				document.documentElement.dataset.platform = ios
-					? 'ios'
-					: /Android/.test(ua)
-						? 'android'
-						: 'desktop';
+				var ua = navigator.userAgent;
+				var ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+				document.documentElement.dataset.platform = ios ? 'ios' : /Android/.test(ua) ? 'android' : 'desktop';
 				var t = null;
-				try {
-					t = localStorage.getItem('theme');
-				} catch (_) {}
-				var dark =
-					t === 'dark' || (t !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+				try { t = localStorage.getItem('theme'); } catch (_) {}
+				var dark = t === 'dark' || (t !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
 				document.documentElement.classList.toggle('dark', dark);
 			})();
 		</script>
 		<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-		<meta name="theme-color" content="#faf6f2" media="(prefers-color-scheme: light)" />
-		<meta name="theme-color" content="#161311" media="(prefers-color-scheme: dark)" />
+		<meta name="description" content="UCI, Upendra Competition Institute: coaching, video courses, notes and live mock tests for SSC, Railway, MPPSC and MP Police exams." />
 		<meta name="mobile-web-app-capable" content="yes" />
 		<meta name="apple-mobile-web-app-capable" content="yes" />
+		<meta name="apple-mobile-web-app-title" content="UCI" />
+		<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+		<meta name="theme-color" content="#f4f6f8" media="(prefers-color-scheme: light)" />
+		<meta name="theme-color" content="#0f1218" media="(prefers-color-scheme: dark)" />
 		<link rel="manifest" href="/manifest.webmanifest" />
-		<link rel="icon" href="/favicon.png" type="image/png" />
+		<link rel="icon" href="/favicon.png" type="image/png" sizes="32x32" />
+		<link rel="apple-touch-icon" href="/brand/uci.png" />
 		<link rel="preconnect" href="https://fonts.googleapis.com" />
 		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 		<link
-			href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
+			href="https://fonts.googleapis.com/css2?family=Anek+Latin:wdth,wght@75..100,500..800&family=Figtree:wght@400..700&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
 			rel="stylesheet"
 		/>
 		%sveltekit.head%
 	</head>
-	<body class="min-h-screen antialiased" data-sveltekit-preload-data="hover" ontouchstart="">
+	<body class="min-h-screen antialiased" data-sveltekit-preload-data="hover">
 		<div style="display: contents">%sveltekit.body%</div>
 	</body>
 </html>

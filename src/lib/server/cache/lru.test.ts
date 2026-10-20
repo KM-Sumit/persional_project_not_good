@@ -1,20 +1,16 @@
-import { describe, expect, test } from 'bun:test';
+import { expect, test } from 'bun:test';
 import { LRU } from './lru';
 
-describe('LRU', () => {
-	test('drops the oldest key past capacity', () => {
-		const cache = new LRU<number>(2);
-		cache.set('a', 1, 10_000);
-		cache.set('b', 2, 10_000);
-		cache.set('c', 3, 10_000);
-		expect(cache.get('a')).toBeUndefined();
-		expect(cache.get('b')).toBe(2);
-		expect(cache.get('c')).toBe(3);
-	});
-
-	test('expires a key', () => {
-		const cache = new LRU<string>(4);
-		cache.set('a', 'x', -1);
-		expect(cache.get('a')).toBeUndefined();
-	});
+test('evicts least recently used and expires entries', async () => {
+	const c = new LRU<number>(2);
+	c.set('a', 1, 1000);
+	c.set('b', 2, 1000);
+	c.get('a'); // a is now newest
+	c.set('c', 3, 1000);
+	expect(c.get('b')).toBeUndefined();
+	expect(c.get('a')).toBe(1);
+	expect(c.get('c')).toBe(3);
+	c.set('x', 9, 5);
+	await Bun.sleep(10);
+	expect(c.get('x')).toBeUndefined();
 });

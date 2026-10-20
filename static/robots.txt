@@ -1,3 +1,10 @@
-# allow crawling everything by default
 User-agent: *
-Disallow:
+Allow: /
+Disallow: /app
+Disallow: /admin
+Disallow: /api/
+Disallow: /auth/
+Disallow: /onboarding
+Disallow: /login
+
+Sitemap: https://uci.divyanshshukla.com/sitemap.xml

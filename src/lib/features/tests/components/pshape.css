@@ -1,0 +1,46 @@
+/* CBT palette shapes (NTA semantics): not visited = square, not answered = shield down, answered = shield up,
+   marked = circle, answered + marked = circle with a green dot (it is scored). Colour and shape both carry the state. */
+.pshape {
+	position: relative;
+	display: grid;
+	place-items: center;
+	font-family: var(--font-mono);
+	font-weight: 600;
+	font-variant-numeric: tabular-nums;
+	line-height: 1;
+	flex-shrink: 0;
+	color: #fff;
+}
+.dark .pshape { color: hsl(var(--background)); }
+.pshape[data-state='not-visited'] {
+	border-radius: 6px;
+	border: 1.5px solid hsl(var(--input));
+	background: hsl(var(--surface));
+	color: hsl(var(--foreground));
+}
+.pshape[data-state='not-answered'] {
+	background: hsl(var(--danger));
+	clip-path: polygon(0 0, 100% 0, 100% 68%, 50% 100%, 0 68%);
+	padding-bottom: .3em;
+}
+.pshape[data-state='answered'] {
+	background: hsl(var(--success));
+	clip-path: polygon(50% 0, 100% 32%, 100% 100%, 0 100%, 0 32%);
+	padding-top: .35em;
+}
+.pshape[data-state='marked'],
+.pshape[data-state='answered-marked'] {
+	border-radius: 999px;
+	background: hsl(var(--review));
+}
+.pshape[data-state='answered-marked']::after {
+	content: '';
+	position: absolute;
+	right: -2px;
+	bottom: -2px;
+	width: 38%;
+	height: 38%;
+	border-radius: 999px;
+	background: hsl(var(--success));
+	border: 2px solid hsl(var(--surface));
+}

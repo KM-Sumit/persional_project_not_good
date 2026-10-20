@@ -2,8 +2,13 @@
 	"extends": "$app/tsconfig",
 	"compilerOptions": {
 		"strict": true,
-		"types": ["$app/types", "bun"]
+		"types": ["$app/types", "bun"],
+		// package.json "imports" maps #lib/* without extensions; TS needs paths to probe .ts/.svelte.
+		"paths": {
+			"#lib": ["./src/lib/index.ts"],
+			"#lib/*": ["./src/lib/*"]
+		}
 	},
-	"include": ["src/**/*.ts", "src/**/*.svelte", "vite.config.ts", "scripts/**/*.ts"],
+	"include": ["src", "*.ts"],
 	"exclude": ["src/service-worker.ts"]
 }

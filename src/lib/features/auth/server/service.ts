@@ -1,65 +1,59 @@
-import { createHash, randomBytes } from 'node:crypto';
-import { eq } from 'drizzle-orm';
-import { db } from '$lib/server/db';
-import { sessions, users } from '$lib/server/db/schema';
-import { adminEmails } from '$lib/server/env';
-import type { SessionUser } from '../schema';
+// Accounts are Google-only: a verified Google identity signs in, links to an existing row with the same
+// email, or creates a student. ADMIN_EMAILS are promoted to admin on every sign-in.
+import { eq, sql } from 'drizzle-orm';
+import type { GoogleIdentity } from '#lib/server/auth/google';
+import { db } from '#lib/server/db';
+import { users, type User } from '#lib/server/db/schema';
+import { adminEmails } from '#lib/server/env';
 
-const SESSION_MS = 30 * 24 * 60 * 60 * 1000;
-const RENEW_WITHIN_MS = 7 * 24 * 60 * 60 * 1000;
+const SEEN_EVERY_MS = 5 * 60_000;
 
-export function hashToken(token: string) {
-	return createHash('sha256').update(token).digest('hex');
+export async function getUser(id: string): Promise<User | null> {
+	const [u] = await db().select().from(users).where(eq(users.id, id)).limit(1);
+	return u ?? null;
 }
 
-export async function upsertGoogleUser(profile: { sub: string; email: string; name: string }): Promise<SessionUser> {
-	const email = profile.email.toLowerCase();
-	const role = adminEmails().includes(email) ? 'admin' : 'student';
-	const [row] = await db()
+export async function signInWithGoogle(g: GoogleIdentity): Promise<{ user: User } | { error: 'suspended' }> {
+	const email = g.email.toLowerCase();
+	const name = `${g.firstName} ${g.lastName}`.trim();
+	const admin = adminEmails().has(email);
+	const [bySub] = await db().select().from(users).where(eq(users.googleSub, g.sub)).limit(1);
+	const existing = bySub ?? (await db().select().from(users).where(eq(users.email, email)).limit(1))[0];
+
+	if (existing) {
+		if (existing.suspendedAt) return { error: 'suspended' };
+		const [user] = await db()
+			.update(users)
+			.set({
+				googleSub: g.sub, // Google verified this email, so the address owner is this Google account
+				name: existing.name || name, // a name edited in the profile wins
+				avatarUrl: g.picture ?? existing.avatarUrl,
+				...(admin && { role: 'admin' as const }),
+				lastSeenAt: new Date()
+			})
+			.where(eq(users.id, existing.id))
+			.returning();
+		return { user: user! };
+	}
+
+	const [user] = await db()
 		.insert(users)
-		.values({ googleSub: profile.sub, email, name: profile.name, role })
-		.onConflictDoUpdate({
-			target: users.googleSub,
-			set: { email, name: profile.name, role, updatedAt: new Date() }
-		})
-		.returning({ id: users.id, name: users.name, email: users.email, role: users.role });
-	return row!;
+		.values({ email, googleSub: g.sub, name, avatarUrl: g.picture, role: admin ? 'admin' : 'student', lastSeenAt: new Date() })
+		.returning();
+	return { user: user! };
 }
 
-export async function openSession(userId: string) {
-	const token = randomBytes(32).toString('base64url');
-	const expiresAt = new Date(Date.now() + SESSION_MS);
-	await db().insert(sessions).values({ tokenHash: hashToken(token), userId, expiresAt });
-	return { token, expiresAt };
+/** Logout: every token issued before this stops matching, on every device. */
+export async function bumpSessionVersion(userId: string) {
+	await db()
+		.update(users)
+		.set({ sessionVersion: sql`${users.sessionVersion} + 1` })
+		.where(eq(users.id, userId));
 }
 
-export async function validateSession(token: string): Promise<{ user: SessionUser; expiresAt: Date } | null> {
-	const tokenHash = hashToken(token);
-	const [row] = await db()
-		.select({
-			expiresAt: sessions.expiresAt,
-			id: users.id,
-			name: users.name,
-			email: users.email,
-			role: users.role
-		})
-		.from(sessions)
-		.innerJoin(users, eq(users.id, sessions.userId))
-		.where(eq(sessions.tokenHash, tokenHash))
-		.limit(1);
-	if (!row) return null;
-	if (row.expiresAt.getTime() <= Date.now()) {
-		await db().delete(sessions).where(eq(sessions.tokenHash, tokenHash));
-		return null;
-	}
-	let expiresAt = row.expiresAt;
-	if (expiresAt.getTime() - Date.now() < RENEW_WITHIN_MS) {
-		expiresAt = new Date(Date.now() + SESSION_MS);
-		await db().update(sessions).set({ expiresAt }).where(eq(sessions.tokenHash, tokenHash));
-	}
-	return { user: { id: row.id, name: row.name, email: row.email, role: row.role }, expiresAt };
-}
-
-export async function destroySession(token: string) {
-	await db().delete(sessions).where(eq(sessions.tokenHash, hashToken(token)));
+/** Throttled presence: at most one write per user per 5 minutes. */
+export async function touchLastSeen(u: Pick<User, 'id' | 'lastSeenAt'>, now = new Date()) {
+	if (u.lastSeenAt && now.getTime() - u.lastSeenAt.getTime() < SEEN_EVERY_MS) return false;
+	await db().update(users).set({ lastSeenAt: now }).where(eq(users.id, u.id));
+	return true;
 }

@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#f4f5f7" />
+<title>Offline · UCI</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+<script>
+	try {
+		var t = localStorage.getItem('theme');
+		if (t === 'dark' || (t !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches)) document.documentElement.className = 'dark';
+	} catch (_) {}
+</script>
+<style>
+	:root { --bg: #f4f5f7; --fg: #151a23; --muted: #5b6475; --card: #fff; --border: #e3e6ec; --primary: #c25a0e; color-scheme: light; }
+	.dark { --bg: #0f1218; --fg: #eceff5; --muted: #9aa1b2; --card: #171b23; --border: #272c38; --primary: #f29a4f; color-scheme: dark; }
+	* { box-sizing: border-box; }
+	body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 16px; background: var(--bg); color: var(--fg); font: 16px/1.5 "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif; }
+	main { width: 100%; max-width: 24rem; text-align: center; background: var(--card); border: 1px solid var(--border); border-radius: 20px; padding: 32px 24px; }
+	svg { color: var(--muted); }
+	h1 { font-size: 1.35rem; margin: 16px 0 6px; letter-spacing: -0.02em; }
+	p { margin: 0 0 24px; color: var(--muted); }
+	button { width: 100%; padding: 12px 18px; border-radius: 12px; border: 0; background: var(--primary); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+	.dark button { color: #0f1218; }
+	.brand { font-weight: 700; margin-bottom: 20px; }
+	.brand span { color: var(--primary); }
+	#retry-status { font-size: 0.875rem; margin: -12px 0 16px; min-height: 1.25rem; }
+</style>
+</head>
+<body>
+	<main>
+		<div class="brand">Campus<span>Quiz</span></div>
+		<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h.01"/><path d="M8.5 16.43a5 5 0 0 1 7 0"/><path d="M5 12.86a10 10 0 0 1 5.17-2.69"/><path d="M19 12.86a10 10 0 0 0-2.007-1.523"/><path d="M2 8.82a15 15 0 0 1 4.177-2.643"/><path d="M22 8.82a15 15 0 0 0-11.288-3.764"/><path d="m2 2 20 20"/></svg>
+		<h1>You're offline</h1>
+		<p>UCI needs a connection to load quizzes and save answers. Check your Wi-Fi or mobile data.</p>
+		<p id="retry-status" aria-live="polite"></p>
+		<button type="button" id="retry-btn">Try again</button>
+	</main>
+	<script>
+	(function () {
+		var btn = document.getElementById('retry-btn');
+		var status = document.getElementById('retry-status');
+		var autoAttempts = 0;
+		var maxAuto = 20;
+		var backoff = [1000, 2000, 4000, 8000];
+		var autoTimer = null;
+		var gaveUp = false;
+
+		function tryAgain() {
+			location.reload();
+		}
+
+		btn.addEventListener('click', tryAgain);
+
+		function showGaveUp() {
+			gaveUp = true;
+			if (autoTimer) clearTimeout(autoTimer);
+			status.textContent = 'Still offline — tap Try again';
+		}
+
+		function delayForAttempt(n) {
+			if (n < backoff.length) return backoff[n];
+			return 15000;
+		}
+
+		function scheduleAuto() {
+			if (gaveUp || autoAttempts >= maxAuto) {
+				if (autoAttempts >= maxAuto) showGaveUp();
+				return;
+			}
+			var delay = delayForAttempt(autoAttempts);
+			autoAttempts++;
+			autoTimer = setTimeout(function () {
+				if (navigator.onLine) tryAgain();
+				else scheduleAuto();
+			}, delay);
+		}
+
+		scheduleAuto();
+
+		addEventListener('online', function () {
+			setTimeout(function () {
+				if (!gaveUp) tryAgain();
+			}, 1000);
+		});
+	})();
+	</script>
+</body>
+</html>

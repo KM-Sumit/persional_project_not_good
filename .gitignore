@@ -25,3 +25,7 @@ legacy/password.md
 # Vite
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# Playwright MCP snapshots (may hold secrets)
+.playwright-mcp/
+shots/

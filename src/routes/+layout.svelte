@@ -1,15 +1,14 @@
 <script lang="ts">
-	import { navigating } from '$app/state';
-	import UpdatePrompt from '$lib/components/pwa/UpdatePrompt.svelte';
-	import type { LayoutProps } from './$types';
 	import '../app.css';
+	import { Toaster } from '#lib/components/ui';
+	import UpdatePrompt from '#lib/components/pwa/UpdatePrompt.svelte';
+	import OfflineBanner from '#lib/components/pwa/OfflineBanner.svelte';
 
-	let { children }: LayoutProps = $props();
+	let { children } = $props();
 </script>
 
-{#if navigating.to}
-	<div class="nav-progress" role="progressbar" aria-label="Loading"></div>
-{/if}
-
 {@render children()}
+
+<Toaster />
 <UpdatePrompt />
+<OfflineBanner />

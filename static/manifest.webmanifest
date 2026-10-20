@@ -1,15 +1,18 @@
 {
-	"name": "UCI Exam Prep",
+	"name": "UCI · Upendra Competition Institute",
 	"short_name": "UCI",
+	"description": "Upendra Competition Institute: courses, notes and live mock tests for government exams.",
+	"lang": "en-IN",
 	"display": "standalone",
-	"start_url": "/home",
-	"background_color": "#FAF6EE",
-	"theme_color": "#172A3E",
+	"start_url": "/app",
+	"scope": "/",
+	"background_color": "#f4f6f8",
+	"theme_color": "#f4f6f8",
 	"icons": [
 		{
-			"src": "/favicon.svg",
-			"sizes": "any",
-			"type": "image/svg+xml",
+			"src": "/brand/uci.png",
+			"sizes": "447x447",
+			"type": "image/png",
 			"purpose": "any"
 		}
 	]

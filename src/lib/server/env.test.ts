@@ -1,48 +1,17 @@
-import { describe, expect, test } from 'bun:test';
-import { mockAuthAllowed, resetEnv } from './env';
+import { expect, test } from 'bun:test';
+import { parseEnv } from './env';
 
-const keys = ['NODE_ENV', 'GOOGLE_OAUTH_MOCK', 'DATABASE_URL'] as const;
+const base = { DATABASE_URL: 'postgres://u:p@localhost:5432/db', AUTH_SECRET: 'x'.repeat(32) };
 
-function withEnv(values: Record<(typeof keys)[number], string | undefined>, fn: () => void) {
-	const saved = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
-	try {
-		for (const k of keys) {
-			const v = values[k];
-			if (v === undefined) delete process.env[k];
-			else process.env[k] = v;
-		}
-		resetEnv();
-		fn();
-	} finally {
-		for (const k of keys) {
-			const v = saved[k];
-			if (v === undefined) delete process.env[k];
-			else process.env[k] = v;
-		}
-		resetEnv();
-	}
-}
+test('ORIGIN is required in production', () => {
+	expect(() => parseEnv({ ...base, NODE_ENV: 'production' })).toThrow();
+	expect(() => parseEnv({ ...base, NODE_ENV: 'production', ORIGIN: '' })).toThrow();
+	expect(parseEnv({ ...base, NODE_ENV: 'production', ORIGIN: 'https://uci.divyanshshukla.com' }).ORIGIN).toBe('https://uci.divyanshshukla.com');
+	expect(parseEnv({ ...base, NODE_ENV: 'development' }).ORIGIN).toBeUndefined();
+});
 
-describe('mock auth', () => {
-	test('refuses the mock chooser in production', () => {
-		withEnv(
-			{
-				NODE_ENV: 'production',
-				GOOGLE_OAUTH_MOCK: '1',
-				DATABASE_URL: 'postgres://uci:uci@localhost:5436/uci'
-			},
-			() => expect(mockAuthAllowed()).toBe(false)
-		);
-	});
-
-	test('allows the mock chooser in development', () => {
-		withEnv(
-			{
-				NODE_ENV: 'development',
-				GOOGLE_OAUTH_MOCK: '1',
-				DATABASE_URL: 'postgres://uci:uci@localhost:5436/uci'
-			},
-			() => expect(mockAuthAllowed()).toBe(true)
-		);
-	});
+test('blank optional values count as unset', () => {
+	const e = parseEnv({ ...base, REDIS_URL: '', GEMINI_API_KEY: '' });
+	expect(e.REDIS_URL).toBeUndefined();
+	expect(e.GEMINI_API_KEY).toBeUndefined();
 });
