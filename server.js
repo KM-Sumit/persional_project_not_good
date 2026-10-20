@@ -15,4 +15,7 @@ const server = http.createServer((req, res) => {
 });
 
 const port = Number(process.env.PORT ?? 3000);
-server.listen(port, process.env.HOST ?? '0.0.0.0');
+const started = Number(process.env.BOOT_STARTED ?? Date.now());
+server.listen(port, process.env.HOST ?? '0.0.0.0', () => {
+	console.log(`[boot] ready in ${Date.now() - started} ms`);
+});

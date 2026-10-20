@@ -1,0 +1,13 @@
+node_modules
+.svelte-kit
+build
+.git
+.env
+.env.*
+flow
+legacy
+docs
+*.MP4
+channels4_profile.jpg
+image.png
+.vscode
