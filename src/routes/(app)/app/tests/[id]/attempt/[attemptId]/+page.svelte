@@ -538,7 +538,7 @@
 	.prompt { margin-top: 0.5rem; font-size: 1.125rem; line-height: 1.55; font-weight: 600; white-space: pre-line; overflow-wrap: anywhere; }
 	@media (min-width: 768px) { .prompt { font-size: 1.25rem; } }
 	.q-img { margin-top: 1rem; max-width: 100%; max-height: 22rem; border-radius: 12px; border: 1px solid hsl(var(--border)); background: hsl(var(--surface)); }
-	.omr { align-items: center; touch-action: manipulation; }
+	.omr { align-items: center; touch-action: pan-x pan-y; }
 	.omr .omr-text { padding-top: 0; white-space: pre-line; }
 	.omr.is-just:has(input:checked) .omr-bubble { animation: ink 0.14s ease-out; }
 	@keyframes ink { from { box-shadow: inset 0 0 0 14px hsl(var(--surface)); } }

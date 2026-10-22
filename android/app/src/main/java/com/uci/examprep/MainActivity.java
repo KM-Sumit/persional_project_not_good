@@ -42,11 +42,14 @@ public class MainActivity extends Activity {
 		settings.setJavaScriptEnabled(true);
 		settings.setDomStorageEnabled(true);
 		settings.setDatabaseEnabled(true);
-		settings.setLoadWithOverviewMode(true);
+		// Honor width=device-width, then stay at 100%. Overview mode zooms the page out to "fit", which is the web feel.
 		settings.setUseWideViewPort(true);
+		settings.setLoadWithOverviewMode(false);
+		settings.setTextZoom(100);
 		settings.setSupportZoom(false);
 		settings.setBuiltInZoomControls(false);
 		settings.setDisplayZoomControls(false);
+		webView.setInitialScale(100);
 		settings.setMediaPlaybackRequiresUserGesture(false);
 		settings.setJavaScriptCanOpenWindowsAutomatically(false);
 		settings.setSupportMultipleWindows(false);
@@ -155,7 +158,7 @@ public class MainActivity extends Activity {
 	}
 
 	private String errorHtml() {
-		return "<!doctype html><html><head><meta name=viewport content='width=device-width,initial-scale=1'>"
+		return "<!doctype html><html><head><meta name=viewport content='width=device-width,initial-scale=1,minimum-scale=1,maximum-scale=1,user-scalable=no'>"
 			+ "<style>body{font-family:sans-serif;background:#f4f6f8;color:#0f1218;display:flex;"
 			+ "min-height:100vh;align-items:center;justify-content:center;margin:0;padding:24px;text-align:center}"
 			+ "a{color:#0f1218;font-weight:700}</style></head><body>"
