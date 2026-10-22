@@ -32,7 +32,7 @@
 
 	onMount(() => {
 		if (page.url.searchParams.has('created')) {
-			toast('Course created. Now add lessons.');
+			toast('Folder created. Add a video or notes.');
 			const u = new URL(page.url.href);
 			u.searchParams.delete('created');
 			replaceState(u, page.state);

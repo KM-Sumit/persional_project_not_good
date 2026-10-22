@@ -188,5 +188,6 @@ export async function sentList(cursor?: string | null, limit = PAGE): Promise<Pa
 }
 
 export async function deleteNotification(id: string) {
-	await db().delete(notifications).where(eq(notifications.id, id));
+	const [row] = await db().delete(notifications).where(eq(notifications.id, id)).returning({ href: notifications.href });
+	return row ?? null;
 }

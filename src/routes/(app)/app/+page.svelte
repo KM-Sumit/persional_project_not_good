@@ -1,18 +1,31 @@
 <script lang="ts">
-	import { enhance } from '$app/forms';
-	import { ArrowRight, BookOpenText, CalendarClock, ChevronRight, ClipboardList, Newspaper, NotebookText, PlayCircle, Radio, Timer, UsersRound } from '@lucide/svelte';
+	import {
+		ArrowRight,
+		BookOpen,
+		Briefcase,
+		ChevronRight,
+		ClipboardList,
+		Newspaper,
+		NotebookText,
+		Timer,
+		UsersRound
+	} from '@lucide/svelte';
 	import Countdown from '#lib/components/kit/Countdown.svelte';
-	import { toast } from '#lib/components/ui';
 	import BannerCarousel from '#lib/features/engage/components/BannerCarousel.svelte';
 	import LessonKindIcon from '#lib/features/courses/components/LessonKindIcon.svelte';
 	import { when } from '#lib/features/courses/components/format';
 
 	let { data } = $props();
 
-	const hour = $derived(Number(new Intl.DateTimeFormat('en-IN', { hour: 'numeric', hourCycle: 'h23', timeZone: 'Asia/Kolkata' }).format(new Date(data.serverNow))));
+	const hour = $derived(
+		Number(
+			new Intl.DateTimeFormat('en-IN', { hour: 'numeric', hourCycle: 'h23', timeZone: 'Asia/Kolkata' }).format(
+				new Date(data.serverNow)
+			)
+		)
+	);
 	const greet = $derived(hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening');
 
-	// Exactly one "next thing", in priority order.
 	const next = $derived(
 		data.inProgress
 			? 'resume'
@@ -24,290 +37,133 @@
 						? 'live'
 						: 'start'
 	);
-	const pct = (a: number, b: number) => (b > 0 ? Math.min(100, Math.round((a / b) * 100)) : 0);
-	let joining = $state(false);
+
+	const shortcuts = [
+		{ href: '/app/learn', label: 'Courses', icon: BookOpen },
+		{ href: '/app/tests', label: 'Tests', icon: ClipboardList },
+		{ href: '/app/notes', label: 'Study Notes', icon: NotebookText },
+		{ href: '/jobs', label: 'Job Alert', icon: Briefcase },
+		{ href: '/app/daily', label: 'Current Affairs', icon: Newspaper },
+		{ href: '/contact', label: 'Connect Us', icon: UsersRound }
+	] as const;
 </script>
 
 <svelte:head><title>Today · UCI</title></svelte:head>
 
-<div class="page pb-8">
-	<header class="page-head rise" style="--i: 0">
-		<div class="min-w-0">
-			<p class="eyebrow">{greet}</p>
-			<h1 class="page-title">Hello, {data.firstName}</h1>
-		</div>
-		{#if data.examName}
-			<a href="/app/me#exam" class="chip shrink-0" title="Change target exam">{data.examName}</a>
-		{/if}
+<div class="home">
+	<header class="home-head rise" style="--i: 0">
+		<p class="eyebrow">{greet}</p>
+		<h1 class="page-title">Hello, {data.firstName}</h1>
 	</header>
 
-	<div class="today">
-		<div class="stack-lg min-w-0">
-			<section class="rise" style="--i: 1">
-				<BannerCarousel banners={data.banners} />
-			</section>
+	<section class="rise" style="--i: 1">
+		<BannerCarousel banners={data.banners} />
+	</section>
 
-			<!-- The one next thing -->
-			<section class="rise" style="--i: 2" aria-label="Next up">
-				{#if next === 'resume' && data.inProgress}
-					{@const t = data.inProgress}
-					<article class="card next">
-						<p class="eyebrow">Test in progress</p>
-						<h2 class="next-title">{t.title}</h2>
-						<p class="muted small">Your answers are saved. Pick up where you left off before time runs out.</p>
-						<a class="btn btn-primary btn-lg" href="/app/tests/{t.id}/attempt/{t.inProgressAttemptId}">Resume test<ArrowRight /></a>
-					</article>
-				{:else if next === 'live' && data.nextLive}
-					{@const t = data.nextLive}
-					<article class="card next admit">
-						<div class="admit-top">
-							<p class="eyebrow">{t.window === 'live' ? 'Live now' : 'Admit card · scheduled test'}</p>
-							{#if t.window === 'live'}<span class="badge badge-live">Live</span>{/if}
-						</div>
-						<h2 class="next-title">{t.title}</h2>
-						<dl class="admit-grid">
-							<div><dt>Starts</dt><dd>{t.startsAt ? when(t.startsAt) : 'Anytime'}</dd></div>
-							<div><dt>Duration</dt><dd class="font-mono tabular">{t.durationMin} min</dd></div>
-							<div><dt>Questions</dt><dd class="font-mono tabular">{t.questionCount}</dd></div>
-							<div><dt>Marks</dt><dd class="font-mono tabular">{t.totalMarks}</dd></div>
-						</dl>
-						{#if t.window === 'upcoming' && data.nextLiveSoon && t.startsAt}
-							<p class="countdown"><Timer class="size-4" /> Starts in <Countdown to={t.startsAt} serverNow={data.serverNow} warnAt={0} /></p>
-						{/if}
-						<a class="btn btn-primary btn-lg" href="/app/tests/{t.id}">{t.window === 'live' ? 'Open test' : 'View instructions'}<ArrowRight /></a>
-					</article>
-				{:else if next === 'continue' && data.cont}
-					{@const c = data.cont}
-					<article class="card next">
-						<p class="eyebrow">Continue learning</p>
-						<h2 class="next-title">{c.lesson.title}</h2>
-						<p class="muted small flex items-center gap-1.5"><LessonKindIcon kind={c.lesson.kind} />{c.course.title}</p>
-						<div class="flex items-center gap-3">
-							<div class="progress grow"><span style="width: {c.progress.percent}%"></span></div>
-							<span class="font-mono tabular small">{c.progress.completed}/{c.progress.total}</span>
-						</div>
-						<a class="btn btn-primary btn-lg" href="/app/learn/{c.course.slug}/{c.lesson.id}">
-							{c.lesson.positionSec > 0 ? 'Resume lesson' : 'Start lesson'}<ArrowRight />
-						</a>
-					</article>
-				{:else}
-					<article class="card next">
-						<p class="eyebrow">Start here</p>
-						<h2 class="next-title">Take your first practice test</h2>
-						<p class="muted small">See where you stand today. Every test shows answers, solutions and your rank.</p>
-						<a class="btn btn-primary btn-lg" href="/app/tests">Browse tests<ArrowRight /></a>
-					</article>
-				{/if}
-			</section>
-
-			{#if data.liveClass || data.daily?.post}
-				<!-- Every-day items: the next live class and today's current affairs quiz. -->
-				<section class="list rise" style="--i: 2" aria-label="Today">
-					{#if data.liveClass}
-						{@const c = data.liveClass}
-						<a class="list-row" href="/app/live/{c.id}">
-							<span class="leading-icon"><Radio /></span>
-							<span class="grow">
-								<span class="title block">{c.title}</span>
-								<span class="meta block">{c.status === 'live' ? 'Live now' : when(c.startsAt)} · {c.teacher}</span>
-							</span>
-							{#if c.status === 'live'}<span class="badge badge-live">Live</span>{/if}
-							<ChevronRight class="chev" />
-						</a>
-					{/if}
-					{#if data.daily?.post}
-						{@const d = data.daily}
-						<a class="list-row" href="/app/daily">
-							<span class="leading-icon"><Newspaper /></span>
-							<span class="grow">
-								<span class="title block">Today's current affairs</span>
-								<span class="meta block">
-									{d.quiz?.status === 'done' ? `Quiz done${d.quiz.score != null ? ` · ${d.quiz.score} marks` : ''}` : d.quiz ? 'Read, then take the quiz' : 'Read today’s update'}{d.streak > 1 ? ` · ${d.streak}-day streak` : ''}
-								</span>
-							</span>
-							<ChevronRight class="chev" />
-						</a>
-					{/if}
-				</section>
-			{/if}
-
-			<section class="rise" style="--i: 3">
-				<div class="section-head">
-					<h2 class="section-title">Tests open now</h2>
-					<a class="section-link" href="/app/tests">All tests</a>
-				</div>
-				{#if data.openNow.length}
-					<div class="list">
-						{#each data.openNow as t (t.id)}
-							<a class="list-row" href="/app/tests/{t.id}">
-								<span class="leading-icon"><ClipboardList /></span>
-								<span class="grow">
-									<span class="title block">{t.title}</span>
-									<span class="meta block"><span class="tabular">{t.questionCount}</span> questions · <span class="tabular">{t.durationMin}</span> min{t.attemptsUsed ? ` · attempted ${t.attemptsUsed}×` : ''}</span>
-								</span>
-								{#if t.kind === 'live'}<span class="trail"><span class="badge badge-live">Live</span></span>{/if}
-							</a>
-						{/each}
-					</div>
-				{:else}
-					<div class="card card-pad muted small">No other tests are open for your exam right now. New ones show up here.</div>
-				{/if}
-			</section>
-
-			{#if next !== 'continue' && data.cont}
-				{@const c = data.cont}
-				<section class="rise" style="--i: 4">
-					<div class="section-head"><h2 class="section-title">Continue learning</h2><a class="section-link" href="/app/learn">My courses</a></div>
-					<div class="list"><a class="list-row" href="/app/learn/{c.course.slug}/{c.lesson.id}">
-						<span class="leading-icon"><PlayCircle /></span>
-						<span class="grow">
-							<span class="title block">{c.lesson.title}</span>
-							<span class="meta block">{c.course.title} · <span class="tabular">{c.progress.percent}%</span> done</span>
-						</span>
-					</a></div>
-				</section>
-			{/if}
-		</div>
-
-		<aside class="stack-lg min-w-0">
-			{#if data.nextLive && next !== 'live'}
-				{@const t = data.nextLive}
-				<section class="rise" style="--i: 4">
-					<div class="section-head"><h2 class="section-title">Next scheduled test</h2></div>
-					<div class="list"><a class="list-row" href="/app/tests/{t.id}">
-						<span class="leading-icon"><CalendarClock /></span>
-						<span class="grow">
-							<span class="title block">{t.title}</span>
-							<span class="meta block">{t.startsAt ? when(t.startsAt) : ''}</span>
-						</span>
-					</a></div>
-				</section>
-			{/if}
-
-			<section class="rise" style="--i: 5">
-				<div class="section-head">
-					<h2 class="section-title">New notes</h2>
-					<a class="section-link" href="/app/notes">All notes</a>
-				</div>
-				{#if data.notes.length}
-					<div class="list">
-						{#each data.notes as n (n.id)}
-							<a class="list-row" href="/app/notes/{n.slug}">
-								<span class="leading-icon"><NotebookText /></span>
-								<span class="grow">
-									<span class="title block">{n.title}</span>
-									<span class="meta block"><span class="tabular">{n.readingMinutes}</span> min read{n.hasPdf ? ' · PDF' : ''}</span>
-								</span>
-							</a>
-						{/each}
-					</div>
-				{:else}
-					<div class="card card-pad muted small">Notes for your exam will appear here.</div>
-				{/if}
-			</section>
-
-			<section class="card card-pad rise" style="--i: 6">
-				<div class="flex items-start gap-3">
-					<span class="leading-icon"><UsersRound /></span>
-					<div class="min-w-0">
-						<h2 class="font-semibold">Joined a batch at UCI?</h2>
-						<p class="muted small">Enter the 6-letter code from your teacher to unlock your batch's tests, courses and notes.</p>
-					</div>
-				</div>
-				<form
-					method="POST"
-					action="/app/me?/join"
-					class="join"
-					use:enhance={() => {
-						joining = true;
-						return async ({ result, update, formElement }) => {
-							joining = false;
-							if (result.type === 'success') {
-								toast(`Joined ${(result.data as { batch?: string })?.batch ?? 'batch'}`);
-								formElement.reset();
-								await update({ reset: false, invalidateAll: true });
-							} else if (result.type === 'failure') toast((result.data as { message?: string })?.message ?? 'Could not join.', 'error');
-							else await update();
-						};
-					}}
+	<section class="rise" style="--i: 2" aria-label="Next up">
+		{#if next === 'resume' && data.inProgress}
+			{@const t = data.inProgress}
+			<article class="hero-card">
+				<p class="eyebrow">Test in progress</p>
+				<h2 class="hero-title">{t.title}</h2>
+				<p class="hero-copy">Your answers are saved. Pick up where you left off before time runs out.</p>
+				<a class="btn btn-primary btn-lg btn-block" href="/app/tests/{t.id}/attempt/{t.inProgressAttemptId}"
+					>Resume test <ArrowRight /></a
 				>
-					<label class="sr-only" for="join-code">Batch code</label>
-					<input id="join-code" name="code" class="input font-mono uppercase" maxlength="8" autocomplete="off" autocapitalize="characters" placeholder="AB12CD" required />
-					<button class="btn btn-secondary" disabled={joining}>Join</button>
-				</form>
-			</section>
+			</article>
+		{:else if next === 'live' && data.nextLive}
+			{@const t = data.nextLive}
+			<article class="hero-card">
+				<p class="eyebrow">{t.window === 'live' ? 'Live now' : 'Admit card · scheduled test'}</p>
+				<h2 class="hero-title">{t.title}</h2>
+				<p class="hero-copy">
+					{t.startsAt ? when(t.startsAt) : 'Open now'} · {t.durationMin} min · {t.questionCount} questions
+				</p>
+				{#if t.window === 'upcoming' && data.nextLiveSoon && t.startsAt}
+					<p class="countdown"><Timer class="size-4" /> Starts in <Countdown to={t.startsAt} serverNow={data.serverNow} warnAt={0} /></p>
+				{/if}
+				<a class="btn btn-primary btn-lg btn-block" href="/app/tests/{t.id}"
+					>{t.window === 'live' ? 'Open test' : 'View instructions'} <ArrowRight /></a
+				>
+			</article>
+		{:else if next === 'continue' && data.cont}
+			{@const c = data.cont}
+			<article class="hero-card">
+				<p class="eyebrow">Continue learning</p>
+				<h2 class="hero-title">{c.lesson.title}</h2>
+				<p class="hero-copy flex items-center gap-1.5"><LessonKindIcon kind={c.lesson.kind} />{c.course.title}</p>
+				<a class="btn btn-primary btn-lg btn-block" href="/app/learn/{c.course.slug}/{c.lesson.id}">
+					{c.lesson.positionSec > 0 ? 'Resume lesson' : 'Start lesson'}
+					<ArrowRight />
+				</a>
+			</article>
+		{:else}
+			<article class="hero-card">
+				<p class="eyebrow">Start here</p>
+				<h2 class="hero-title">Take your first practice test</h2>
+				<p class="hero-copy">See where you stand today. Every test shows answers, solutions and your rank.</p>
+				<a class="btn btn-primary btn-lg btn-block" href="/app/tests">Browse tests <ArrowRight /></a>
+			</article>
+		{/if}
+	</section>
 
-			<div class="list rise" style="--i: 7"><a class="list-row" href="/app/learn">
-				<span class="leading-icon"><BookOpenText /></span>
-				<span class="grow"><span class="title block">Courses</span><span class="meta block">Video lessons and reading for {data.examName ?? 'your exam'}</span></span>
-			</a></div>
-		</aside>
-	</div>
+	<nav class="tiles rise" style="--i: 3" aria-label="Shortcuts">
+		{#each shortcuts as s (s.href)}
+			<a class="tile" href={s.href}>
+				<span class="tile-icon"><s.icon strokeWidth={1.75} /></span>
+				<span class="tile-label">{s.label}</span>
+				<span class="tile-chev"><ChevronRight strokeWidth={2} /></span>
+			</a>
+		{/each}
+	</nav>
 </div>
 
 <style>
-	.today {
+	.home {
+		width: 100%;
+		max-width: 28rem;
+		margin: 0 auto;
+		padding: 0.25rem var(--gutter) 2.5rem;
 		display: grid;
-		gap: var(--space-section);
+		gap: 1.15rem;
 	}
-	@media (min-width: 1024px) {
-		.today {
-			grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr);
-			align-items: start;
-		}
+	.home-head {
+		display: grid;
+		gap: 0.2rem;
 	}
-	.next {
+	.home-head .page-title {
+		font-size: clamp(1.75rem, 1.4rem + 2vw, 2.15rem);
+		letter-spacing: -0.03em;
+	}
+	.hero-card {
 		display: flex;
 		flex-direction: column;
-		gap: 0.75rem;
-		padding: 1.25rem;
-		border-left: 4px solid hsl(var(--sun));
+		align-items: stretch;
+		gap: 0.55rem;
+		padding: 1.2rem 1.15rem 1.15rem 1.25rem;
+		background: hsl(var(--surface));
+		border: 1px solid hsl(var(--border));
+		border-radius: 1.35rem;
+		border-left: 5px solid hsl(var(--sun));
+		box-shadow: var(--shadow-sm);
 	}
-	.next .btn {
-		align-self: flex-start;
-		margin-top: 0.25rem;
-	}
-	@media (max-width: 639px) {
-		.next .btn {
-			align-self: stretch;
-		}
-	}
-	.next-title {
+	.hero-title {
 		font-family: var(--font-display);
 		font-weight: 800;
-		font-size: clamp(1.375rem, 1.2rem + 0.8vw, 1.75rem);
+		font-size: clamp(1.25rem, 1.1rem + 0.7vw, 1.55rem);
 		line-height: 1.15;
 		letter-spacing: -0.02em;
 		text-wrap: balance;
 	}
-	.admit-top {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 0.5rem;
-	}
-	.admit-grid {
-		display: grid;
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-		border-top: 1.5px dashed hsl(var(--border));
-		border-bottom: 1.5px dashed hsl(var(--border));
-		padding: 0.75rem 0;
-		gap: 0.75rem 1rem;
-	}
-	@media (min-width: 640px) {
-		.admit-grid {
-			grid-template-columns: minmax(0, 1.6fr) repeat(3, minmax(0, 1fr));
-		}
-	}
-	.admit-grid dt {
-		font-size: 0.6875rem;
-		text-transform: uppercase;
-		letter-spacing: 0.08em;
+	.hero-copy {
 		color: hsl(var(--muted-foreground));
+		font-size: 0.9rem;
+		line-height: 1.4;
 	}
-	.admit-grid dd {
-		font-weight: 600;
-		font-size: 0.9375rem;
+	.hero-card .btn {
+		margin-top: 0.55rem;
+		border-radius: 999px;
+		font-weight: 700;
 	}
 	.countdown {
 		display: flex;
@@ -315,17 +171,49 @@
 		gap: 0.5rem;
 		font-size: 0.9375rem;
 	}
-	.countdown :global(.kit-countdown) {
-		font-size: 1.25rem;
+	.tiles {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 0.7rem;
 	}
-	.join {
+	.tile {
 		display: flex;
-		gap: 0.5rem;
-		margin-top: 0.875rem;
+		align-items: center;
+		gap: 0.4rem;
+		min-height: 3.55rem;
+		padding: 0.72rem 0.55rem 0.72rem 0.7rem;
+		background: hsl(var(--surface));
+		border: 1px solid hsl(var(--border));
+		border-radius: 1.15rem;
+		box-shadow: var(--shadow-sm);
+		color: inherit;
+		text-decoration: none;
 	}
-	.join .input {
+	.tile-icon {
+		display: grid;
+		flex-shrink: 0;
+		color: hsl(var(--sun));
+	}
+	.tile-icon :global(svg) {
+		width: 1.25rem;
+		height: 1.25rem;
+	}
+	.tile-label {
 		flex: 1;
 		min-width: 0;
-		letter-spacing: 0.15em;
+		font-size: 0.8125rem;
+		font-weight: 700;
+		line-height: 1.2;
+		white-space: nowrap;
+	}
+	.tile-chev {
+		display: grid;
+		flex-shrink: 0;
+		color: hsl(var(--muted-foreground));
+		opacity: 0.7;
+	}
+	.tile-chev :global(svg) {
+		width: 1rem;
+		height: 1rem;
 	}
 </style>

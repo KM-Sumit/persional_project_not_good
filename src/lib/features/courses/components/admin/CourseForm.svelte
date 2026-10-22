@@ -25,8 +25,10 @@
 		batches: Opt[];
 		action: string;
 		submitLabel: string;
+		/** When set, the course is created as free or paid and the switch is hidden. */
+		lockPaid?: boolean | null;
 	}
-	let { course = null, exams, batches, action, submitLabel }: Props = $props();
+	let { course = null, exams, batches, action, submitLabel, lockPaid = null }: Props = $props();
 
 	// Editor state starts from the saved course; the page remounts this form when the course changes.
 	// svelte-ignore state_referenced_locally
@@ -34,7 +36,7 @@
 	let description = $state(c?.description ?? '');
 	let examId = $state<string | null>(c?.examId ?? null);
 	let batchId = $state<string | null>(c?.batchId ?? '');
-	let paid = $state(c?.paid ?? false);
+	let paid = $state(lockPaid ?? c?.paid ?? false);
 	let cover = $state(c?.coverFileId ? { id: c.coverFileId, name: 'Cover image', url: `/api/files/${c.coverFileId}` } : null);
 	let coverUrl = $state(c?.coverUrl ?? '');
 	let busy = $state(false);
@@ -48,9 +50,24 @@
 	use:enhance={withToast('Course saved', undefined, (b) => (busy = b))}
 >
 	<div class="field">
-		<label class="label" for="c-title">Title</label>
-		<input id="c-title" class="input" name="title" required maxlength="200" value={c?.title ?? ''} placeholder="SSC CGL Quant: Percentages" />
+		<label class="label" for="c-title">Folder name</label>
+		<input id="c-title" class="input" name="title" required maxlength="200" value={c?.title ?? ''} placeholder="Maths Basics" />
 	</div>
+	<div class="field">
+		<FileUpload accept="image" bind:value={cover} name="coverFileId" label="Banner" />
+		{#if !cover}
+			<input class="input mt-2" name="coverUrl" bind:value={coverUrl} inputmode="url" placeholder="Or paste a banner image link" aria-label="Banner image link" />
+			<p class="help">{ytCover ? 'Using the first video’s YouTube thumbnail.' : 'Students see this banner on the course.'}</p>
+		{:else}
+			<input type="hidden" name="coverUrl" value="" />
+		{/if}
+	</div>
+	{#if lockPaid === true}
+		<input type="hidden" name="isPaid" value="on" />
+	{/if}
+	<details class="more">
+		<summary>More details</summary>
+		<div class="stack mt-3">
 	<div class="field">
 		<label class="label" for="c-summary">One-line summary <span class="opt">(optional)</span></label>
 		<input id="c-summary" class="input" name="summary" maxlength="500" value={c?.summary ?? ''} placeholder="What a student can do after this course" />
@@ -73,16 +90,11 @@
 		<label class="label" for="c-batch">Who can see it</label>
 		<Picker id="c-batch" bind:value={batchId} options={batches} name="batchId" label="Who can see it" />
 	</div>
-	<div class="field">
-		<FileUpload accept="image" bind:value={cover} name="coverFileId" label="Cover image (optional)" />
-		{#if !cover}
-			<input class="input mt-2" name="coverUrl" bind:value={coverUrl} inputmode="url" placeholder="Or paste an image link (Google Drive works)" aria-label="Cover image link" />
-			<p class="help">{ytCover ? 'Using the first video’s YouTube thumbnail.' : 'Leave empty and the first video’s thumbnail is used.'}</p>
-		{:else}
-			<input type="hidden" name="coverUrl" value="" />
-		{/if}
-	</div>
-	<Switch bind:checked={paid} name="isPaid" label="Paid course" description="Students need the course product or the exam pass. Preview lessons stay free." />
+	{#if lockPaid === null}
+		<Switch bind:checked={paid} name="isPaid" label="Paid course" description="Students need the course product or the exam pass. Preview lessons stay free." />
+	{/if}
+		</div>
+	</details>
 	<div>
 		<button class="btn btn-primary" disabled={busy}>{busy ? 'Saving…' : submitLabel}</button>
 	</div>

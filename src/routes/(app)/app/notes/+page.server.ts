@@ -21,15 +21,12 @@ export const load: PageServerLoad = async (event) => {
 	]);
 	// Only offer filters that match some note.
 	const examIds = new Set(all.map((n) => n.examId));
-	const subjectIds = new Set(all.map((n) => n.subjectId));
 	const exams = t.categories.flatMap((c) => c.exams).filter((e) => examIds.has(e.id));
-	const subjects = t.subjects.filter((s) => subjectIds.has(s.id));
 	return {
 		notes,
 		tab: f.tab,
 		savedCount: all.filter((n) => n.bookmarked).length,
-		exams: exams.map((e) => ({ value: e.id, label: e.name })),
-		subjects: subjects.map((s) => ({ value: s.id, label: s.name })),
-		names: Object.fromEntries([...exams.map((e) => [e.id, e.name]), ...subjects.map((s) => [s.id, s.name])]) as Record<string, string>
+		subjects: t.subjects.map((s) => ({ id: s.id, name: s.name })),
+		names: Object.fromEntries([...exams.map((e) => [e.id, e.name]), ...t.subjects.map((s) => [s.id, s.name])]) as Record<string, string>
 	};
 };

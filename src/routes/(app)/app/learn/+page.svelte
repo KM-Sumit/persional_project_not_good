@@ -1,91 +1,82 @@
 <script lang="ts">
-	import { ArrowRight, BookOpen } from '@lucide/svelte';
-	import EmptyState from '#lib/components/ui/EmptyState.svelte';
-	import CourseCard from '#lib/features/courses/components/CourseCard.svelte';
+	import { Atom, BookOpen, Brain, ChevronRight, Globe, Landmark } from '@lucide/svelte';
 
 	let { data } = $props();
+	const icons = [BookOpen, Atom, Brain, Globe, Landmark];
+	const tones = ['210 80% 62%', '145 62% 46%', '24 85% 58%', '262 70% 68%', '32 85% 58%'];
+	const washes = ['214 28% 16%', '150 26% 15%', '22 30% 16%', '262 28% 18%', '28 32% 16%'];
+	const list = $derived(data.tab === 'paid' ? data.paid : data.tab === 'mine' ? data.mine : data.free);
 </script>
 
-<svelte:head><title>Learn · UCI</title></svelte:head>
+<svelte:head><title>Courses · UCI</title></svelte:head>
 
-<div class="page pb-10 stack-lg">
+<div class="page flow">
 	<header class="page-head">
-		<div class="min-w-0">
-			<h1 class="page-title">Learn</h1>
-			<p class="page-sub">Video lessons and reading, chapter by chapter.</p>
+		<div>
+			<h1 class="page-title">Courses</h1>
+			<p class="page-sub">Free lessons and paid full courses.</p>
 		</div>
 	</header>
 
-	{#if data.cont}
-		{@const c = data.cont}
-		<section class="card resume rise" style="--i: 0">
-			<div class="min-w-0 grow">
-				<p class="eyebrow">Continue · {c.course.title}</p>
-				<h2 class="resume-title line-clamp-2">{c.lesson.title}</h2>
-				<div class="flex items-center gap-3 mt-2">
-					<div class="progress grow"><span style="width: {c.progress.percent}%"></span></div>
-					<span class="small font-mono tabular">{c.progress.completed}/{c.progress.total}</span>
-				</div>
-			</div>
-			<a class="btn btn-primary" href="/app/learn/{c.course.slug}/{c.lesson.id}">Continue<ArrowRight /></a>
-		</section>
-	{/if}
+	<nav class="segmented" aria-label="Courses">
+		<a href="/app/learn" aria-current={data.tab === 'free' ? 'page' : undefined}>Free Courses</a>
+		<a href="?tab=paid" aria-current={data.tab === 'paid' ? 'page' : undefined}>Paid Courses</a>
+		{#if data.mine.length}<a href="?tab=mine" aria-current={data.tab === 'mine' ? 'page' : undefined}>My Courses</a>{/if}
+	</nav>
 
-	{#if data.mine.length}
-		<section class="rise" style="--i: 1">
-			<div class="section-head"><h2 class="section-title">My courses</h2></div>
-			<div class="grid-courses">
-				{#each data.mine as c (c.id)}<CourseCard course={c} progress={c.progress} />{/each}
-			</div>
-		</section>
+	{#if list.length}
+		<nav class="rows" aria-label="Course list">
+			{#each list as c, i (c.id)}
+				{@const Icon = icons[i % icons.length]!}
+				<a class="row" href={data.tab === 'mine' ? `/app/learn/${c.slug}` : c.isPaid ? `/app/learn/${c.slug}` : `/app/learn/${c.slug}?view=classes`} style:--tone={tones[i % tones.length]} style:--wash={washes[i % washes.length]}>
+					<span class="mark"><Icon strokeWidth={1.75} /></span>
+					<span class="copy">
+						<span class="name">{c.title}</span>
+						<span class="blurb">
+							{#if data.tab === 'mine'}{c.progress.percent}% complete{:else if c.isPaid && data.price[c.id]}₹{data.price[c.id]!.priceInr}{:else if c.isPaid}Paid{:else}Free{/if}
+							· {c.lessonCount} {c.lessonCount === 1 ? 'class' : 'classes'}
+						</span>
+					</span>
+					<ChevronRight class="go" />
+				</a>
+			{/each}
+		</nav>
+	{:else}
+		<div class="card card-pad muted small">
+			{data.tab === 'paid' ? 'Paid courses show up here once a course is put on sale.' : data.tab === 'mine' ? 'Start a course and it will stay here.' : 'Free courses are being added.'}
+		</div>
 	{/if}
-
-	<section class="rise" style="--i: 2">
-		<div class="section-head"><h2 class="section-title">{data.mine.length ? 'All courses' : 'Courses'}</h2></div>
-		{#if data.chips.length > 1}
-			<nav class="chips mb-3" aria-label="Filter by exam">
-				<a class="chip" href="?exam=all" aria-current={data.exam === null ? 'true' : undefined} data-sveltekit-replacestate data-sveltekit-noscroll>All</a>
-				{#each data.chips as ch (ch.id)}
-					<a class="chip" href="?exam={ch.id}" aria-current={data.exam === ch.id ? 'true' : undefined} data-sveltekit-replacestate data-sveltekit-noscroll>{ch.name}</a>
-				{/each}
-			</nav>
-		{/if}
-		{#if data.catalog.length}
-			<div class="grid-courses">
-				{#each data.catalog as c (c.id)}<CourseCard course={c} progress={c.progress} exam={c.examName} />{/each}
-			</div>
-		{:else}
-			<EmptyState icon={BookOpen} title="No courses here yet" body="Courses for this exam are being recorded. Try another exam or check back soon.">
-				{#snippet action()}<a class="btn btn-secondary" href="?exam=all">Show all courses</a>{/snippet}
-			</EmptyState>
-		{/if}
-	</section>
 </div>
 
 <style>
-	.resume {
+	.flow { max-width: 40rem; display: grid; gap: 0.85rem; }
+	.flow .page-head { margin-bottom: 0; }
+	.rows { display: grid; gap: 0.6rem; }
+	.row {
 		display: flex;
 		align-items: center;
-		gap: 1rem;
-		padding: 1.125rem 1.25rem;
-		border-left: 4px solid hsl(var(--sun));
+		gap: 0.7rem;
+		min-height: 4.4rem;
+		padding: 0.7rem 0.75rem;
+		background: hsl(var(--surface));
+		border: 1px solid hsl(var(--border));
+		border-radius: 1.1rem;
+		color: inherit;
+		text-decoration: none;
 	}
-	.resume-title {
-		font-family: var(--font-display);
-		font-weight: 700;
-		font-size: 1.25rem;
-		line-height: 1.2;
-		margin-top: 0.125rem;
-	}
-	@media (max-width: 639px) {
-		.resume {
-			flex-direction: column;
-			align-items: stretch;
-		}
-	}
-	.grid-courses {
+	.mark {
 		display: grid;
-		gap: 0.875rem;
-		grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr));
+		place-items: center;
+		width: 2.6rem;
+		height: 2.6rem;
+		flex-shrink: 0;
+		border-radius: 0.8rem;
+		background: hsl(var(--wash));
+		color: hsl(var(--tone));
 	}
+	.mark :global(svg) { width: 1.25rem; height: 1.25rem; }
+	.copy { flex: 1; min-width: 0; display: grid; gap: 0.1rem; }
+	.name { font-weight: 800; line-height: 1.2; }
+	.blurb { font-size: 0.75rem; color: hsl(var(--muted-foreground)); }
+	:global(.go) { width: 1rem; height: 1rem; color: hsl(var(--muted-foreground)); flex-shrink: 0; }
 </style>

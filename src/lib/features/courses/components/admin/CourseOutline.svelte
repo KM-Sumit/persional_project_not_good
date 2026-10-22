@@ -28,6 +28,7 @@
 	// Local copy so drags move instantly; reloads (invalidateAll) replace it with the saved order.
 	let chapters = $derived(course.chapters);
 	let panel = $state<{ chapterId: string; mode: 'lesson' | 'bulk' } | null>(null);
+	let addKind = $state<'video' | 'reading'>('video');
 	let renaming = $state<string | null>(null);
 	let confirm = $state<{ title: string; body: string; label: string; run: () => Promise<boolean> } | null>(null);
 	let confirmOpen = $state(false);
@@ -118,6 +119,14 @@
 	}
 	const toggle = (chapterId: string, mode: 'lesson' | 'bulk') =>
 		(panel = panel?.chapterId === chapterId && panel.mode === mode ? null : { chapterId, mode });
+	function openAdd(chapterId: string, kind: 'video' | 'reading') {
+		if (panel?.chapterId === chapterId && panel.mode === 'lesson' && addKind === kind) {
+			panel = null;
+			return;
+		}
+		addKind = kind;
+		panel = { chapterId, mode: 'lesson' };
+	}
 </script>
 
 {#snippet bulkForm(chapterId: string)}
@@ -249,16 +258,19 @@
 			{#if panel?.chapterId === ch.id}
 				<div class="panel">
 					{#if panel.mode === 'lesson'}
-						<LessonForm compact action="?/addLesson" chapterId={ch.id} submitLabel="Add lesson">
-							<button type="button" class="btn btn-ghost" onclick={() => (panel = null)}>Cancel</button>
-						</LessonForm>
+						{#key addKind}
+							<LessonForm compact action="?/addLesson" chapterId={ch.id} initialKind={addKind} submitLabel={addKind === 'video' ? 'Add video' : 'Add notes'}>
+								<button type="button" class="btn btn-ghost" onclick={() => (panel = null)}>Cancel</button>
+							</LessonForm>
+						{/key}
 					{:else}
 						{@render bulkForm(ch.id)}
 					{/if}
 				</div>
 			{/if}
 			<div class="chapter-foot">
-				<button type="button" class="btn btn-secondary btn-sm" aria-expanded={panel?.chapterId === ch.id && panel.mode === 'lesson'} onclick={() => toggle(ch.id, 'lesson')}><Plus aria-hidden="true" />Add lesson</button>
+				<button type="button" class="btn btn-secondary btn-sm" aria-expanded={panel?.chapterId === ch.id && panel.mode === 'lesson' && addKind === 'video'} onclick={() => openAdd(ch.id, 'video')}><PlaySquare aria-hidden="true" />Add video</button>
+				<button type="button" class="btn btn-secondary btn-sm" aria-expanded={panel?.chapterId === ch.id && panel.mode === 'lesson' && addKind === 'reading'} onclick={() => openAdd(ch.id, 'reading')}><BookOpenText aria-hidden="true" />Add notes</button>
 				<button type="button" class="btn btn-ghost btn-sm" aria-expanded={panel?.chapterId === ch.id && panel.mode === 'bulk'} onclick={() => toggle(ch.id, 'bulk')}><ListPlus aria-hidden="true" />Paste many links</button>
 			</div>
 		</li>

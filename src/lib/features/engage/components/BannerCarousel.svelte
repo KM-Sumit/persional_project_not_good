@@ -1,5 +1,5 @@
 <script lang="ts">
-	// Meesho-style poster slider: one full-width snap slide, swipe on phones, autoplay when there are several.
+	// Home poster slider: one snap slide, swipe on phones, autoplay when there are several.
 	import type { BannerDto } from '#lib/features/engage/schema';
 	import { reducedMotion } from '#lib/client/platform';
 
@@ -7,10 +7,10 @@
 
 	const placeholder: BannerDto = {
 		id: 'placeholder',
-		title: 'UCI exam prep',
-		subtitle: 'Courses, notes and live mock tests',
-		ctaLabel: 'Explore courses',
-		href: '/app/learn',
+		title: 'All India Live Mock Test Series',
+		subtitle: 'Scheduled mocks with rank, percentile and full solutions.',
+		ctaLabel: 'See tests',
+		href: '/app/tests',
 		imageFileId: null,
 		image: null,
 		enabled: true,
@@ -69,7 +69,7 @@
 		{#each slides as b, i (b.id)}
 			<a
 				href={b.href}
-				class="slide"
+				class={['slide', b.image && 'has-image']}
 				aria-label={b.title}
 				aria-current={i === current ? 'true' : undefined}
 				target={external(b.href) ? '_blank' : undefined}
@@ -109,8 +109,8 @@
 
 <style>
 	.banners {
-		margin-inline: calc(-1 * var(--gutter));
-		padding-inline: 0.75rem;
+		display: grid;
+		gap: 0.75rem;
 	}
 	.track {
 		display: flex;
@@ -120,6 +120,7 @@
 		-webkit-overflow-scrolling: touch;
 		overscroll-behavior-x: contain;
 		touch-action: pan-x;
+		border-radius: 1.5rem;
 	}
 	.track::-webkit-scrollbar {
 		display: none;
@@ -128,14 +129,19 @@
 		flex: 0 0 100%;
 		scroll-snap-align: start;
 		scroll-snap-stop: always;
-		aspect-ratio: 16 / 9;
-		border-radius: var(--radius);
+		min-height: 11.5rem;
+		border-radius: 1.5rem;
 		overflow: hidden;
 		display: block;
 		background:
-			radial-gradient(120% 140% at 100% 0%, hsl(var(--sun) / 0.55), transparent 55%),
-			linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(222 22% 10%) 78%);
+			radial-gradient(90% 120% at 12% 0%, hsl(var(--sun) / 0.95), transparent 58%),
+			linear-gradient(160deg, hsl(24 88% 42%) 0%, hsl(24 50% 22%) 48%, hsl(222 22% 8%) 100%);
 		color: hsl(0 0% 100%);
+	}
+	.slide.has-image {
+		aspect-ratio: 16 / 9;
+		min-height: 0;
+		background: hsl(222 22% 10%);
 	}
 	.slide img {
 		width: 100%;
@@ -148,41 +154,41 @@
 		display: flex;
 		flex-direction: column;
 		justify-content: center;
-		gap: 0.35rem;
-		padding: clamp(1rem, 0.7rem + 1.5vw, 1.5rem);
-		max-width: 88%;
+		align-items: flex-start;
+		gap: 0.45rem;
+		padding: 1.35rem 1.25rem 1.5rem;
+		max-width: 22rem;
 	}
 	.title {
 		font-family: var(--font-display);
 		font-stretch: var(--display-stretch);
 		font-weight: 800;
-		font-size: clamp(1.25rem, 1.05rem + 1vw, 1.75rem);
-		line-height: 1.12;
-		letter-spacing: -0.01em;
+		font-size: clamp(1.2rem, 1.05rem + 0.9vw, 1.55rem);
+		line-height: 1.15;
+		letter-spacing: -0.02em;
+		text-wrap: balance;
 	}
 	.sub {
 		font-size: 0.875rem;
-		line-height: 1.35;
-		opacity: 0.85;
+		line-height: 1.4;
+		opacity: 0.88;
 	}
 	.cta {
-		align-self: flex-start;
-		margin-top: 0.35rem;
+		margin-top: 0.55rem;
 		display: inline-flex;
 		align-items: center;
-		padding: 0.35rem 0.85rem;
+		padding: 0.5rem 1.05rem;
 		border-radius: 999px;
 		background: hsl(0 0% 100%);
-		color: hsl(222 22% 10%);
-		font-size: 0.8125rem;
-		font-weight: 600;
+		color: hsl(222 18% 10%);
+		font-size: 0.875rem;
+		font-weight: 700;
 	}
 	.dots {
 		display: flex;
 		justify-content: center;
 		align-items: center;
-		gap: 0.125rem;
-		margin-top: 0.5rem;
+		gap: 0.35rem;
 	}
 	.dot {
 		width: 1.5rem;
@@ -196,8 +202,8 @@
 	}
 	.dot::after {
 		content: '';
-		width: 0.375rem;
-		height: 0.375rem;
+		width: 0.4rem;
+		height: 0.4rem;
 		border-radius: 999px;
 		background: hsl(var(--foreground) / 0.22);
 		transition:
@@ -205,16 +211,7 @@
 			background 0.28s var(--ease-smooth);
 	}
 	.dot.is-on::after {
-		width: 1rem;
-		background: hsl(var(--primary));
-	}
-	@media (min-width: 1024px) {
-		.banners {
-			margin-inline: 0;
-			padding-inline: 0;
-		}
-		.slide {
-			aspect-ratio: 2.2 / 1;
-		}
+		width: 1.15rem;
+		background: hsl(var(--sun));
 	}
 </style>

@@ -93,6 +93,12 @@ export async function deletePost(id: string) {
 	await db().delete(posts).where(eq(posts.id, id));
 }
 
+/** Removes a published job alert that was created from an announcement. Missing slugs are ignored. */
+export async function deleteJobAlertBySlug(slug: string) {
+	const [r] = await db().select({ id: posts.id }).from(posts).where(and(eq(posts.kind, 'job_alert'), eq(posts.slug, slug)));
+	if (r) await deletePost(r.id);
+}
+
 // ---------- daily quiz ----------
 
 /** Starts an AI run that drafts the quiz from the post text. Kept small: title as topic, plain text clamped as context. */

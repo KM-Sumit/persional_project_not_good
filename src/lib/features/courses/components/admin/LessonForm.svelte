@@ -22,12 +22,13 @@
 		fields?: Snippet;
 		/** Buttons next to submit. */
 		children?: Snippet;
+		initialKind?: LessonKind;
 	}
-	let { lesson = null, action, submitLabel, chapterId, compact = false, onsaved, fields, children }: Props = $props();
+	let { lesson = null, action, submitLabel, chapterId, compact = false, onsaved, fields, children, initialKind = 'video' }: Props = $props();
 
 	// svelte-ignore state_referenced_locally
 	const l = lesson;
-	let kind = $state<LessonKind>(l?.kind ?? 'video');
+	let kind = $state<LessonKind>(l?.kind ?? initialKind);
 	let title = $state(l?.title ?? '');
 	let youtube = $state(l?.youtubeId ? `https://youtu.be/${l.youtubeId}` : '');
 	let minutes = $state(l?.durationSec ? String(Math.round(l.durationSec / 60)) : '');

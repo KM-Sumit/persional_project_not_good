@@ -22,7 +22,7 @@
 </script>
 
 <div class="page">
-	<PageHeader title="Announcements" subtitle="Lands in every student's inbox in the app" />
+	<PageHeader title="Announcements" subtitle="The same message goes to Job Alert and to every student's notification inbox." />
 
 	<div class="cols">
 		<section class="rise">
@@ -40,7 +40,7 @@
 				{/if}
 				<div class="field"><label class="label" for="n-title">Title</label><input id="n-title" class="input" name="title" bind:value={title} required maxlength="120" placeholder="New mock test is live" /></div>
 				<div class="field"><label class="label" for="n-body">Message</label><textarea id="n-body" class="textarea" name="body" bind:value={body} maxlength="2000" rows="4" placeholder="SSC GD full mock opens at 6 PM today. 100 questions, 60 minutes."></textarea></div>
-				<div class="field"><label class="label" for="n-href">Link (optional)</label><input id="n-href" class="input" name="href" maxlength="500" placeholder="/app/tests or https://…" /><p class="help">Students tap the announcement to open this.</p></div>
+				<div class="field"><label class="label" for="n-href">Link (optional)</label><input id="n-href" class="input" name="href" maxlength="500" placeholder="/app/tests or https://…" /><p class="help">Everyone gets it on Job Alert and in notifications. A batch message stays in that batch's notifications only. If you leave the link empty, the notification opens the job alert.</p></div>
 				<button class="btn btn-primary" disabled={!title.trim() || (audience === 'batch' && !batchId)}><Send /> Send announcement</button>
 			</form>
 		</section>

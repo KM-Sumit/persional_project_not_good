@@ -195,6 +195,7 @@
 					<input id="ap-new" name="newModule" class="input" bind:value={newModule} maxlength="200" placeholder={title} />
 				</div>
 			</div>
+			<input type="hidden" name="examId" value={page.url.searchParams.get('exam') ?? ''} />
 			<Switch bind:checked={makeTest} name="createTest" label="Also create a draft test" description="A practice test with exactly these questions." />
 			{#if makeTest}
 				<div class="field">

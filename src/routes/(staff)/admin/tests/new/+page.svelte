@@ -10,19 +10,18 @@
 		FileUp,
 		IndianRupee,
 		Library,
-		ListChecks,
 		Lock,
 		LockOpen,
 		PenLine,
 		Plus,
-		Search,
 		Sparkles,
 		Timer,
 		Trash2,
 		Trophy
 	} from '@lucide/svelte';
-	import { Button, PageHeader, Sheet, Switch, Tabs, toast } from '#lib/components/ui';
-	import { DateTimePicker, Picker } from '#lib/components/kit';
+	import { Button, PageHeader, Sheet, Switch, toast } from '#lib/components/ui';
+	import { DateTimePicker, FileUpload, Picker } from '#lib/components/kit';
+	import type { FileDto } from '#lib/features/files/schema';
 	import QuestionEditor from '#lib/features/bank/components/QuestionEditor.svelte';
 	import QuestionView from '#lib/features/bank/components/QuestionView.svelte';
 	import { accessLabel, fmtIST, kindLabel } from '#lib/features/bank/components/format';
@@ -31,8 +30,9 @@
 
 	let { data } = $props();
 
-	const STEPS = ['Type', 'Details', 'Questions', 'Review'] as const;
+	const STEPS = ['Section', 'Details', 'Questions', 'Review'] as const;
 	let step = $state(0);
+	let categoryId = $state<string | null>(null);
 
 	// ---------- step 1 + 2: the test ----------
 	const currentSessionId = () => data.sessions.find((s) => s.isCurrent)?.id ?? null;
@@ -82,7 +82,13 @@
 		if (k === 'pyq' && f.marksPerQuestion === 1) (f.marksPerQuestion = 2), (f.negativeMarks = 0.5);
 	}
 
-	const examOptions = $derived(data.taxonomy.categories.flatMap((c) => c.exams.map((e) => ({ value: e.id, label: e.name, group: c.name }))));
+	const category = $derived(data.taxonomy.categories.find((c) => c.id === categoryId) ?? null);
+	const chosenExam = $derived(data.taxonomy.categories.flatMap((c) => c.exams).find((e) => e.id === f.examId) ?? null);
+	function pickCategory(id: string) {
+		categoryId = id;
+		const cat = data.taxonomy.categories.find((c) => c.id === id);
+		if (!cat?.exams.some((e) => e.id === f.examId)) f.examId = null;
+	}
 	const subjectOptions = $derived(data.taxonomy.subjects.map((s) => ({ value: s.id, label: s.name })));
 	const sessionOptions = $derived(data.sessions.map((s) => ({ value: s.id, label: s.name, hint: s.isCurrent ? 'Current' : undefined })));
 	const batchOptions = $derived(
@@ -91,7 +97,8 @@
 	const nowIso = new Date().toISOString();
 
 	// ---------- step 3: questions ----------
-	let source = $state('modules');
+	let source = $state<'manual' | 'json' | 'pdf' | 'bank'>('manual');
+	let pdfFile = $state<FileDto | null>(null);
 	type Row = { moduleId: string | null; count: number; difficulty: '' | 'easy' | 'medium' | 'hard' };
 	let blueprint = $state<Row[]>([]);
 	let picked = $state<QuestionDTO[]>([]);
@@ -140,8 +147,14 @@
 		results = res.ok ? (await res.json()).items : [];
 		searching = false;
 	}
+	async function readJsonFile(e: Event) {
+		const file = (e.currentTarget as HTMLInputElement).files?.[0];
+		if (!file) return;
+		if (file.size > 5_000_000) return toast('That JSON file is over 5 MB.', 'error');
+		importText = await file.text();
+	}
 	$effect(() => {
-		if (source !== 'pick') return;
+		if (source !== 'bank') return;
 		void q, qModule;
 		clearTimeout(searchTimer);
 		searchTimer = setTimeout(search, 250);
@@ -153,6 +166,7 @@
 	type Issue = { step: number; text: string; blocksDraft?: boolean };
 	const issues = $derived.by(() => {
 		const out: Issue[] = [];
+		if (!f.examId) out.push({ step: 0, text: 'Choose a section and an exam.', blocksDraft: true });
 		if (!f.title.trim()) out.push({ step: 1, text: 'Give the test a title.', blocksDraft: true });
 		if (f.kind === 'live' && !f.startsAt) out.push({ step: 1, text: 'A live test needs a start time.', blocksDraft: true });
 		if (f.kind === 'live' && f.startsAt && new Date(f.startsAt) <= new Date()) out.push({ step: 1, text: 'The start time is in the past.' });
@@ -220,6 +234,39 @@
 
 	{#if step === 0}
 		<section class="stack rise">
+			<h2 class="section-title">Which section?</h2>
+			<p class="small muted">SSC, Railway, MPPSC, MP Police — the sections you added under Exams & subjects.</p>
+			{#if data.taxonomy.categories.length}
+				<div class="choices" role="radiogroup" aria-label="Section">
+					{#each data.taxonomy.categories as c (c.id)}
+						<button type="button" role="radio" aria-checked={categoryId === c.id} class="choice card" onclick={() => pickCategory(c.id)}>
+							<span class="font-semibold">{c.name}</span>
+							<span class="small muted">{c.exams.length} {c.exams.length === 1 ? 'exam' : 'exams'}</span>
+						</button>
+					{/each}
+				</div>
+			{:else}
+				<p class="card card-pad">No sections yet. <a class="underline" href="/admin/taxonomy">Add SSC, Railway and the others</a> first.</p>
+			{/if}
+			{#if category}
+				<h2 class="section-title mt-4">Which exam in {category.name}?</h2>
+				{#if category.exams.length}
+					<div class="choices" role="radiogroup" aria-label="Exam">
+						{#each category.exams as e (e.id)}
+							<button type="button" role="radio" aria-checked={f.examId === e.id} class="choice card" onclick={() => (f.examId = e.id)}>
+								<span class="font-semibold">{e.name}</span>
+								{#if e.description}<span class="small muted">{e.description}</span>{/if}
+							</button>
+						{/each}
+					</div>
+				{:else}
+					<p class="card card-pad">No exams in {category.name} yet. <a class="underline" href="/admin/taxonomy">Add exams</a> such as CHSL or CGL.</p>
+				{/if}
+			{/if}
+		</section>
+	{:else if step === 1}
+		<section class="stack rise">
+			<p class="small">For <strong>{category?.name}</strong> · <strong>{chosenExam?.name}</strong>. <button type="button" class="underline" onclick={() => (step = 0)}>Change</button></p>
 			<h2 class="section-title">What kind of test?</h2>
 			<div class="choices" role="radiogroup" aria-label="Test type">
 				{#each kinds as k (k.value)}
@@ -230,7 +277,7 @@
 					</button>
 				{/each}
 			</div>
-			<h2 class="section-title mt-4">Who can take it?</h2>
+			<h2 class="section-title mt-2">Who can take it?</h2>
 			<div class="choices choices-3" role="radiogroup" aria-label="Access">
 				{#each accesses as a (a.value)}
 					<button type="button" role="radio" aria-checked={f.access === a.value} class="choice card" onclick={() => (f.access = a.value)}>
@@ -241,21 +288,14 @@
 				{/each}
 			</div>
 		</section>
-	{:else if step === 1}
 		<section class="card card-pad stack rise">
 			<div class="field">
 				<label class="label" for="w-title">Title</label>
-				<input id="w-title" class="input" bind:value={f.title} maxlength="200" placeholder={f.kind === 'pyq' ? 'e.g. SSC CGL 2024 Tier 1, Shift 2' : 'e.g. Polity mock 3'} />
+				<input id="w-title" class="input" bind:value={f.title} maxlength="200" placeholder={f.kind === 'pyq' ? 'e.g. SSC CHSL 2024 Tier 1' : 'e.g. Polity mock 3'} />
 			</div>
-			<div class="form-row">
-				<div class="field">
-					<span class="label">Exam <span class="opt">(optional)</span></span>
-					<Picker bind:value={f.examId} options={examOptions} placeholder="Choose exam" label="Exam" searchable />
-				</div>
-				<div class="field">
-					<span class="label">Subject <span class="opt">(optional)</span></span>
-					<Picker bind:value={f.subjectId} options={subjectOptions} placeholder="Choose subject" label="Subject" searchable />
-				</div>
+			<div class="field">
+				<span class="label">Subject <span class="opt">(optional)</span></span>
+				<Picker bind:value={f.subjectId} options={subjectOptions} placeholder="Choose subject" label="Subject" searchable />
 			</div>
 			<div class="form-row">
 				<div class="field">
@@ -380,22 +420,63 @@
 		</section>
 	{:else if step === 2}
 		<section class="stack rise">
-			<div class="flex flex-wrap items-center justify-between gap-2">
-				<Tabs
-					label="Question source"
-					bind:value={source}
-					items={[
-						{ value: 'modules', label: 'From modules', count: fromModules || undefined },
-						{ value: 'pick', label: 'Pick', count: picked.length || undefined },
-						{ value: 'write', label: 'Write', count: drafts.length || undefined },
-						{ value: 'import', label: 'Import', count: importRows > 0 ? importRows : undefined },
-						{ value: 'ai', label: 'AI' }
-					]}
-				/>
-				<span class="small font-mono tabular">{total} questions planned</span>
+			<p class="small muted">How should the questions for {chosenExam?.name ?? 'this exam'} be added?</p>
+			<div class="choices choices-3" role="radiogroup" aria-label="How to add questions">
+				<button type="button" role="radio" aria-checked={source === 'manual'} class="choice card" onclick={() => (source = 'manual')}>
+					<PenLine class="size-5" />
+					<span class="font-semibold">Manual</span>
+					<span class="small muted">Write each question yourself.</span>
+				</button>
+				<button type="button" role="radio" aria-checked={source === 'json'} class="choice card" onclick={() => (source = 'json')}>
+					<FileUp class="size-5" />
+					<span class="font-semibold">JSON file</span>
+					<span class="small muted">Upload a .json file of questions.</span>
+				</button>
+				<button type="button" role="radio" aria-checked={source === 'pdf'} class="choice card" onclick={() => (source = 'pdf')}>
+					<Sparkles class="size-5" />
+					<span class="font-semibold">PDF upload</span>
+					<span class="small muted">Upload a PDF and generate questions.</span>
+				</button>
 			</div>
+			<p class="small font-mono tabular">{total} questions planned</p>
 
-			{#if source === 'modules'}
+			{#if source === 'manual'}
+				<div class="card card-pad stack">
+					<p class="small muted">New questions are saved to the bank and added to this test.</p>
+					{#each drafts as d, i (i)}
+						<div class="draft">
+							<QuestionView prompt={d.prompt} options={d.options} correctIndex={d.correctIndex} number={i + 1} compact />
+							<button type="button" class="icon-btn" aria-label="Remove question" onclick={() => drafts.splice(i, 1)}><Trash2 /></button>
+						</div>
+					{/each}
+					<Button variant="secondary" onclick={() => (writing = true)}><PenLine class="size-4" />Write a question</Button>
+				</div>
+			{:else if source === 'json'}
+				<div class="card card-pad stack">
+					<label class="btn btn-secondary">
+						<FileUp class="size-4" />Choose JSON file
+						<input type="file" accept=".json,application/json" class="sr-only" onchange={readJsonFile} />
+					</label>
+					<div class="field">
+						<label class="label" for="w-imp">Or paste JSON</label>
+						<textarea id="w-imp" class="textarea font-mono" rows="8" spellcheck="false" bind:value={importText} placeholder={'[{ "prompt": "...", "options": ["A", "B", "C", "D"], "correctIndex": 0 }]'}></textarea>
+						{#if importRows > 0}<p class="help">{importRows} questions ready.</p>{:else if importRows < 0}<p class="error">Not valid JSON.</p>{/if}
+					</div>
+				</div>
+			{:else if source === 'pdf'}
+				<form method="POST" action="/admin/bank/generate" class="card card-pad stack">
+					<input type="hidden" name="mode" value="pdf" />
+					<input type="hidden" name="then" value="test" />
+					<input type="hidden" name="examName" value={chosenExam?.name ?? ''} />
+					<input type="hidden" name="examId" value={f.examId ?? ''} />
+					<input type="hidden" name="count" value="10" />
+					<input type="hidden" name="difficulty" value="mixed" />
+					<input type="hidden" name="language" value={f.language} />
+					<FileUpload accept="pdf" bind:value={pdfFile} name="fileId" label="PDF (up to 40 MB)" />
+					<Button type="submit" disabled={!pdfFile}><Sparkles class="size-4" />Generate questions from PDF</Button>
+					<p class="small muted">You review the questions, then a draft test is created for {chosenExam?.name ?? 'this exam'}.</p>
+				</form>
+			{:else if source === 'bank'}
 				<div class="card card-pad stack">
 					<p class="small muted">Pick modules and how many questions to draw from each. Questions are chosen at random, never twice.</p>
 					{#each blueprint as r, i (i)}
@@ -425,58 +506,11 @@
 						<p class="small">No modules yet. <a class="underline" href="/admin/bank">Create one in the question bank</a>.</p>
 					{/if}
 				</div>
-			{:else if source === 'pick'}
-				<div class="card card-pad stack">
-					<div class="flex flex-wrap gap-2">
-						<label class="search flex-1">
-							<Search class="size-4" aria-hidden="true" />
-							<input class="input" bind:value={q} placeholder="Search question text" aria-label="Search question text" />
-						</label>
-						<div class="min-w-48">
-							<Picker bind:value={qModule} options={data.modules.map((m) => ({ value: m.id, label: m.name }))} placeholder="All modules" label="Module" searchable />
-						</div>
-					</div>
-					<ul class="pick-list" aria-busy={searching}>
-						{#each results as x (x.id)}
-							<li>
-								<label class="pick-row" class:is-on={isPicked(x.id)}>
-									<input type="checkbox" checked={isPicked(x.id)} onchange={() => togglePick(x)} />
-									<QuestionView prompt={x.prompt} options={x.options} correctIndex={x.correctIndex} compact />
-								</label>
-							</li>
-						{:else}
-							<li class="small muted">{searching ? 'Searching…' : 'No questions found.'}</li>
-						{/each}
-					</ul>
-					{#if picked.length}<p class="small"><span class="font-mono tabular">{picked.length}</span> picked.</p>{/if}
-				</div>
-			{:else if source === 'write'}
-				<div class="card card-pad stack">
-					<p class="small muted">New questions are saved to the bank (unfiled) and added to this test.</p>
-					{#each drafts as d, i (i)}
-						<div class="draft">
-							<QuestionView prompt={d.prompt} options={d.options} correctIndex={d.correctIndex} number={i + 1} compact />
-							<button type="button" class="icon-btn" aria-label="Remove question" onclick={() => drafts.splice(i, 1)}><Trash2 /></button>
-						</div>
-					{/each}
-					<Button variant="secondary" onclick={() => (writing = true)}><PenLine class="size-4" />Write a question</Button>
-				</div>
-			{:else if source === 'import'}
-				<div class="card card-pad stack">
-					<div class="field">
-						<label class="label" for="w-imp">Paste JSON or CSV</label>
-						<textarea id="w-imp" class="textarea font-mono" rows="8" spellcheck="false" bind:value={importText} placeholder={'[{ "prompt": "...", "options": ["A", "B", "C", "D"], "correctIndex": 0 }]'}></textarea>
-						{#if importRows > 0}<p class="help">{importRows} rows. Questions already in the bank are skipped.</p>{:else if importRows < 0}<p class="error">Not valid JSON.</p>{/if}
-					</div>
-					<p class="small muted">Want to check rows first? Use <a class="underline" href="/admin/bank/import">Import questions</a>, then pick the module here.</p>
-				</div>
-			{:else}
-				<div class="card card-pad stack">
-					<p>Generate questions from a topic or a PDF, review them, and create the test in one go.</p>
-					<div><Button href="/admin/bank/generate?then=test"><Sparkles class="size-4" />Generate with AI</Button></div>
-					<p class="small muted">This leaves the wizard. The AI review screen makes a draft test you can finish from its page.</p>
-				</div>
 			{/if}
+			<details class="more">
+				<summary>Use questions already in the bank</summary>
+				<div class="mt-3"><Button variant="secondary" type="button" onclick={() => (source = 'bank')}>Open the question bank picker</Button></div>
+			</details>
 		</section>
 	{:else}
 		<section class="stack rise">
@@ -535,7 +569,7 @@
 	<div class="actionbar-inner">
 		{#if step > 0}<Button variant="ghost" class="btn-fixed" type="button" onclick={() => (step -= 1)}>Back</Button>{/if}
 		{#if step < 3}
-			<Button type="button" onclick={next}>Next: {STEPS[step + 1]}</Button>
+			<Button type="button" onclick={next} disabled={step === 0 && !f.examId}>Next: {STEPS[step + 1]}</Button>
 		{:else}
 			<Button variant="secondary" type="submit" name="intent" value="draft" loading={busy === 'draft'} disabled={!canDraft || !!busy}>Save draft</Button>
 			<Button type="submit" name="intent" value="publish" loading={busy === 'publish'} disabled={!canPublish || !!busy}>Publish test</Button>

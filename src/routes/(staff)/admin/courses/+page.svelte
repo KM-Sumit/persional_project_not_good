@@ -3,7 +3,7 @@
 	import { page } from '$app/state';
 	import { replaceState } from '$app/navigation';
 	import { toast } from '#lib/components/ui';
-	import { Plus, PlaySquare } from '@lucide/svelte';
+	import { ChevronLeft, IndianRupee, LockOpen, Plus, PlaySquare } from '@lucide/svelte';
 	import PageHeader from '#lib/components/ui/PageHeader.svelte';
 	import DataTable from '#lib/components/kit/DataTable.svelte';
 	import FilterBar from '#lib/components/kit/FilterBar.svelte';
@@ -34,18 +34,32 @@
 			.map((w) => w[0]!.toUpperCase())
 			.join('');
 	const cover = (r: Row) => (r.coverFileId ? `/api/files/${r.coverFileId}` : r.coverUrl);
+	const section = $derived(page.url.searchParams.get('access') === 'paid' ? 'paid' : page.url.searchParams.get('access') === 'free' ? 'free' : null);
 </script>
 
 <svelte:head><title>Courses · UCI staff</title></svelte:head>
 
 <div class="page stack">
-	<PageHeader title="Courses" subtitle="{data.total} course{data.total === 1 ? '' : 's'}: video, reading and PDF lessons in chapters." crumbs={[{ href: '/admin', label: 'Dashboard' }]}>
+	<PageHeader
+		title={section === 'paid' ? 'Paid courses' : section === 'free' ? 'Free courses' : 'Courses'}
+		subtitle={section ? 'Each folder has a banner and a name. Open it to add videos and notes.' : 'Choose free or paid, then create a folder.'}
+		crumbs={[{ href: '/admin', label: 'Dashboard' }]}
+	>
 		{#snippet actions()}
-			<a href="/admin/courses/new" class="btn btn-primary"><Plus aria-hidden="true" />New course</a>
+			{#if section}
+				<a href="/admin/courses/new?paid={section === 'paid' ? '1' : '0'}" class="btn btn-primary"><Plus aria-hidden="true" />New folder</a>
+			{/if}
 		{/snippet}
 	</PageHeader>
 
-	<FilterBar search placeholder="Search courses" {filters} />
+	{#if !section}
+		<div class="choices">
+			<a class="choice card" href="?access=free"><LockOpen /> <span class="font-semibold">Free courses</span><span class="small muted">Open to every student.</span></a>
+			<a class="choice card" href="?access=paid"><IndianRupee /> <span class="font-semibold">Paid courses</span><span class="small muted">Students buy the course to open it.</span></a>
+		</div>
+	{:else}
+		<a class="back-link" href="/admin/courses"><ChevronLeft />Courses</a>
+		<FilterBar search placeholder="Search folders" {filters} />
 
 	{#snippet titleCell(r: Row)}
 		<span class="flex min-w-0 items-center gap-3">
@@ -73,12 +87,12 @@
 		<span class="font-mono tabular">{r.lessonCount}</span>{#if r.durationSec}<span class="text-muted-foreground"> · {hours(r.durationSec)}</span>{/if}
 	{/snippet}
 	{#snippet emptyState()}
-		{#if data.total}
-			<EmptyState icon={PlaySquare} title="No course matches" body="Try another exam or clear the filters." compact />
-		{:else}
-			<EmptyState icon={PlaySquare} title="No courses yet" body="Create one, then paste a few YouTube links as lessons." compact>
-				{#snippet action()}<a href="/admin/courses/new" class="btn btn-primary">Create the first course</a>{/snippet}
+		{#if data.rows.length === 0 && !page.url.searchParams.get('q')}
+			<EmptyState icon={PlaySquare} title="No folders yet" body="Create a folder with a name and banner, then add videos and notes inside it." compact>
+				{#snippet action()}<a href="/admin/courses/new?paid={section === 'paid' ? '1' : '0'}" class="btn btn-primary">New folder</a>{/snippet}
 			</EmptyState>
+		{:else}
+			<EmptyState icon={PlaySquare} title="No folder matches" body="Try another search or clear the filters." compact />
 		{/if}
 	{/snippet}
 
@@ -94,6 +108,7 @@
 			{ key: 'published', label: 'Status', cell: statusCell, hideOnPhone: true }
 		]}
 	/>
+	{/if}
 </div>
 
 <style>
@@ -114,6 +129,9 @@
 		font-size: 1.125rem;
 		letter-spacing: -0.02em;
 	}
+	.choices { display: grid; gap: 0.75rem; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); }
+	.choice { display: grid; gap: 0.25rem; padding: 1.25rem; color: inherit; text-decoration: none; }
+	.choice :global(svg) { width: 1.25rem; height: 1.25rem; color: hsl(var(--primary)); }
 	.thumb img {
 		width: 100%;
 		height: 100%;

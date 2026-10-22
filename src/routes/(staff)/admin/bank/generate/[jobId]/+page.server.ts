@@ -1,4 +1,5 @@
 import { error, fail, redirect } from '@sveltejs/kit';
+import { z } from 'zod';
 import { getJob, markApplied } from '#lib/features/ai/server/service';
 import { applyGenerated, createModule, listModules } from '#lib/features/bank/server/service';
 import { addQuestions, createTest } from '#lib/features/tests/server/service';
@@ -41,7 +42,8 @@ export const actions: Actions = {
 			if (fd.get('createTest') === 'on' && report.ids.length) {
 				const session = await currentSession();
 				const title = String(fd.get('testTitle') || job.input.topic || 'AI practice test').slice(0, 200);
-				testId = (await createTest({ title, sessionId: session?.id }, user.id)).test.id;
+				const examId = z.uuid().safeParse(String(fd.get('examId') ?? '')).success ? String(fd.get('examId')) : undefined;
+				testId = (await createTest({ title, sessionId: session?.id, examId }, user.id)).test.id;
 				await addQuestions(testId, report.ids);
 			}
 			return { moduleId, testId, inserted: report.inserted };

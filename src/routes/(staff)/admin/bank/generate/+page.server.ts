@@ -1,4 +1,5 @@
 import { redirect } from '@sveltejs/kit';
+import { z } from 'zod';
 import { createJob, listJobs } from '#lib/features/ai/server/service';
 import { aiEnabled } from '#lib/server/ai/generate';
 import { tree } from '#lib/features/taxonomy/server/service';
@@ -32,6 +33,11 @@ export const actions: Actions = {
 		) as GenerateInputRaw;
 		const job = await act(() => createJob(input, user.id));
 		if (!('id' in job)) return job;
-		redirect(303, `/admin/bank/generate/${job.id}${o.then === 'test' ? '?then=test' : ''}`);
+		const exam = typeof o.examId === 'string' && z.uuid().safeParse(o.examId).success ? o.examId : '';
+		const q = new URLSearchParams();
+		if (o.then === 'test') q.set('then', 'test');
+		if (exam) q.set('exam', exam);
+		const qs = q.toString();
+		redirect(303, `/admin/bank/generate/${job.id}${qs ? `?${qs}` : ''}`);
 	}
 };
