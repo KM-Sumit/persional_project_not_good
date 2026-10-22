@@ -1,0 +1,23 @@
+{
+	"packageId": "com.uci.examprep",
+	"host": "uci.divyanshshukla.com",
+	"name": "UCI · Upendra Competition Institute",
+	"launcherName": "UCI",
+	"display": "standalone",
+	"themeColor": "#f4f6f8",
+	"themeColorDark": "#0f1218",
+	"navigationColor": "#f4f6f8",
+	"navigationColorDark": "#0f1218",
+	"backgroundColor": "#f4f6f8",
+	"startUrl": "/app",
+	"iconUrl": "https://uci.divyanshshukla.com/brand/uci.png",
+	"maskableIconUrl": "https://uci.divyanshshukla.com/brand/uci.png",
+	"appVersionName": "1.0.0",
+	"appVersionCode": 1,
+	"shortcuts": [],
+	"generatorApp": "uci-main",
+	"webManifestUrl": "https://uci.divyanshshukla.com/manifest.webmanifest",
+	"fallbackType": "webview",
+	"orientation": "portrait",
+	"features": {}
+}

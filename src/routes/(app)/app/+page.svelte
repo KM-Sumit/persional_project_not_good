@@ -43,8 +43,12 @@
 
 	<div class="today">
 		<div class="stack-lg min-w-0">
+			<section class="rise" style="--i: 1">
+				<BannerCarousel banners={data.banners} />
+			</section>
+
 			<!-- The one next thing -->
-			<section class="rise" style="--i: 1" aria-label="Next up">
+			<section class="rise" style="--i: 2" aria-label="Next up">
 				{#if next === 'resume' && data.inProgress}
 					{@const t = data.inProgress}
 					<article class="card next">
@@ -125,10 +129,6 @@
 						</a>
 					{/if}
 				</section>
-			{/if}
-
-			{#if data.banners.length}
-				<section class="rise" style="--i: 2"><BannerCarousel banners={data.banners} /></section>
 			{/if}
 
 			<section class="rise" style="--i: 3">

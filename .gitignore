@@ -29,3 +29,16 @@ vite.config.ts.timestamp-*
 # Playwright MCP snapshots (may hold secrets)
 .playwright-mcp/
 shots/
+
+# Android TWA build
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/*.keystore
+android/keystore.properties
+android/*.apk
+android/app/src/main/assets/www/
+
+# Local user-space Postgres (no Docker)
+.local-pg/

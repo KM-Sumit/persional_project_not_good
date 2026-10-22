@@ -1,0 +1,10 @@
+[
+	{
+		"relation": ["delegate_permission/common.handle_all_urls"],
+		"target": {
+			"namespace": "android_app",
+			"package_name": "com.uci.examprep",
+			"sha256_cert_fingerprints": ["EE:02:64:19:7B:F8:D4:49:1A:34:D4:AA:AE:B8:A1:9C:5C:FB:8C:CD:F9:4E:D0:1D:53:C2:27:E5:3D:52:D5:51"]
+		}
+	}
+]

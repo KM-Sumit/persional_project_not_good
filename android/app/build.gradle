@@ -1,0 +1,61 @@
+plugins {
+	id 'com.android.application'
+}
+
+def keystoreProperties = new Properties()
+def keystorePropertiesFile = rootProject.file('keystore.properties')
+if (keystorePropertiesFile.exists()) {
+	keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
+android {
+	namespace 'com.uci.examprep'
+	compileSdk 35
+	buildToolsVersion '36.0.0'
+
+	defaultConfig {
+		applicationId 'com.uci.examprep'
+		minSdk 24
+		targetSdk 35
+		versionCode 3
+		versionName '1.1.0'
+	}
+
+	signingConfigs {
+		release {
+			if (keystorePropertiesFile.exists()) {
+				storeFile rootProject.file(keystoreProperties['storeFile'])
+				storePassword keystoreProperties['storePassword']
+				keyAlias keystoreProperties['keyAlias']
+				keyPassword keystoreProperties['keyPassword']
+			}
+		}
+	}
+
+	buildTypes {
+		release {
+			minifyEnabled false
+			signingConfig signingConfigs.release
+		}
+		debug {
+			applicationIdSuffix ''
+			signingConfig signingConfigs.release
+		}
+	}
+
+	compileOptions {
+		sourceCompatibility JavaVersion.VERSION_17
+		targetCompatibility JavaVersion.VERSION_17
+	}
+
+	lint {
+		abortOnError false
+	}
+
+	androidResources {
+		noCompress += ['mp4']
+	}
+}
+
+dependencies {
+}
