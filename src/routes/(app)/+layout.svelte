@@ -1,9 +1,12 @@
 <script lang="ts">
 	import AppShell from '#lib/components/shell/AppShell.svelte';
 	import { studentGroups, studentTabs } from '#lib/components/shell/nav';
+	import PtAutoSubmit from '#lib/features/tests/components/PtAutoSubmit.svelte';
 
 	let { data, children } = $props();
 </script>
+
+<PtAutoSubmit attempt={data.pt} serverNow={data.serverNow} />
 
 <AppShell
 	groups={studentGroups}

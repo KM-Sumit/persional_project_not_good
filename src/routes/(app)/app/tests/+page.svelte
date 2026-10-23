@@ -9,6 +9,7 @@
 		Landmark,
 		ListChecks,
 		Monitor,
+		PieChart,
 		Settings,
 		Shield,
 		UserRound,

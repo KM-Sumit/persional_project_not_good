@@ -7,11 +7,14 @@
 	import AskDoubtButton from '#lib/features/doubts/components/AskDoubtButton.svelte';
 	import { toast } from '#lib/components/ui';
 	import { LETTERS, fmtNum, minutes } from '#lib/features/tests/components/exam';
+	import LangPick from '#lib/features/tests/components/LangPick.svelte';
+	import { paperLine, paperLines, type PaperLang } from '#lib/features/tests/components/paper';
 
 	let { data } = $props();
 	const r = $derived(data.result);
 	type Filter = 'all' | 'wrong' | 'skipped' | 'marked';
 	let filter = $state<Filter>('all');
+	let lang = $state<PaperLang>('en');
 	let busy = $state(false);
 
 	const tone = $derived(r.percentage >= 70 ? '--success' : r.percentage >= 40 ? '--warning' : '--danger');
@@ -140,7 +143,7 @@
 	{/if}
 
 	<section id="solutions" class="mt-8 solutions" aria-labelledby="sol-h">
-		<div class="section-head"><h2 id="sol-h" class="section-title">Solutions</h2></div>
+		<div class="section-head"><h2 id="sol-h" class="section-title">Solutions</h2><LangPick bind:value={lang} /></div>
 		{#if !r.solutionsVisible}
 			<div class="empty card">
 				<div class="empty-icon"><Lock /></div>
@@ -172,10 +175,10 @@
 								<span class="r-time font-mono tabular"><Clock class="size-3.5" />{minutes(q.timeSpentSec)}</span>
 							</span>
 						</header>
-						<p class="prompt">{q.prompt}</p>
+						<p class="prompt" lang={lang}>{paperLine(q.prompt, q.promptHi, lang)}</p>
 						{#if q.imageFileId}<img class="q-img" src="/api/files/{q.imageFileId}" alt="Figure for question {n}" loading="lazy" />{/if}
 						<ol class="opts" aria-label="Options">
-							{#each q.options as text, i (i)}
+							{#each paperLines(q.options, q.optionsHi, lang) as text, i (i)}
 								{@const isCorrect = q.correctIndex === i}
 								{@const isMine = q.selected === i}
 								{@const pct = q.optionPickPct?.[i] ?? null}
@@ -193,10 +196,10 @@
 								</li>
 							{/each}
 						</ol>
-						{#if q.explanation}
+						{#if paperLine(q.explanation ?? '', q.explanationHi, lang)}
 							<div class="explain">
 								<p class="explain-h"><Lightbulb class="size-4" />Explanation</p>
-								<p class="explain-b">{q.explanation}</p>
+								<p class="explain-b">{paperLine(q.explanation ?? '', q.explanationHi, lang)}</p>
 							</div>
 						{/if}
 						<div class="mt-3 flex justify-end"><AskDoubtButton questionId={q.id} label="Ask about this question" variant="ghost" /></div>

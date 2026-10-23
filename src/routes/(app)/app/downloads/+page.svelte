@@ -31,7 +31,7 @@
 	<PageHeader
 		title="Downloads"
 		subtitle={items?.length ? `${items.length} saved · ${formatSize(total)} on this device` : 'Notes and PDFs you saved to read without internet.'}
-		crumbs={[{ href: '/app', label: 'Today' }]}
+		crumbs={[{ href: '/app', label: 'Home' }]}
 	/>
 
 	{#if !supported}

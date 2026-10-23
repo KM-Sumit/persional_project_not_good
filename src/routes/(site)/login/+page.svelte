@@ -54,6 +54,7 @@
 					Continue
 				</button>
 				<p class="tiny muted mt-3 text-center">Local only: type any email. Use admin@uci.test for the admin panel.</p>
+				<a class="btn btn-primary btn-lg btn-block mt-3" href="/auth/google?mock=admin@uci.test&next=/admin" data-sveltekit-reload>Open admin panel</a>
 			</form>
 		{:else if data.google}
 			<a {href} class="btn btn-secondary btn-lg btn-block mt-6 google" data-sveltekit-reload>

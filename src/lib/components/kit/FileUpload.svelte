@@ -2,11 +2,11 @@
 	// Image / PDF upload to POST /api/files with progress, preview and remove. Drop a file on the box or
 	// pick one. Checks size and type before uploading (same rules the server enforces); the hidden input
 	// `name` carries the file id for form actions.
-	import { FileText, ImageUp, RotateCcw, Upload, X } from '@lucide/svelte';
+	import { FileText, ImageUp, RotateCcw, Upload, Video, X } from '@lucide/svelte';
 	import { UPLOAD_RULES, type FileDto } from '#lib/features/files/schema';
 
 	interface Props {
-		accept: 'image' | 'pdf';
+		accept: 'image' | 'pdf' | 'video';
 		value: FileDto | null;
 		name?: string;
 		label?: string;
@@ -14,9 +14,11 @@
 	let { accept, value = $bindable(null), name, label }: Props = $props();
 
 	const rule = $derived(UPLOAD_RULES[accept]);
-	const mimes = $derived(Object.keys(rule.mimes).join(','));
+	const mimes = $derived(
+		accept === 'image' ? 'image/*,.jpg,.jpeg,.png,.webp,.gif' : accept === 'video' ? 'video/*,.mp4,.webm,.mov' : 'application/pdf,.pdf'
+	);
 	const maxMb = $derived(rule.maxBytes / 1024 / 1024);
-	const what = $derived(accept === 'image' ? 'JPEG, PNG or WebP' : 'PDF');
+	const what = $derived(accept === 'image' ? 'JPEG, PNG, WebP or GIF' : accept === 'video' ? 'MP4 or WebM' : 'PDF');
 
 	let input = $state<HTMLInputElement>();
 	let progress = $state<number | null>(null);
@@ -29,7 +31,10 @@
 	function start(file: File | undefined) {
 		if (!file) return;
 		error = '';
-		if (!rule.mimes[file.type]) return void (error = `Use a ${what} file.`);
+		// Phone camera often sends an empty type or image/jpg. The server checks the real bytes.
+		const type = file.type === 'image/jpg' ? 'image/jpeg' : file.type;
+		const loose = !type || type === 'application/octet-stream' || (accept === 'image' && type.startsWith('image/')) || (accept === 'video' && type.startsWith('video/'));
+		if (!rule.mimes[type] && !loose) return void (error = `Use a ${what} file.`);
 		if (file.size > rule.maxBytes) return void (error = `That file is too large (max ${maxMb} MB).`);
 		last = file;
 		const data = new FormData();
@@ -113,8 +118,8 @@
 			ondragleave={() => (over = false)}
 			ondrop={drop}
 		>
-			{#if accept === 'image'}<ImageUp />{:else}<FileText />{/if}
-			<span class="kit-up-cta">{accept === 'image' ? 'Upload an image' : 'Upload a PDF'}</span>
+			{#if accept === 'image'}<ImageUp />{:else if accept === 'video'}<Video />{:else}<FileText />{/if}
+			<span class="kit-up-cta">{accept === 'image' ? 'Upload a photo' : accept === 'video' ? 'Upload a video' : 'Upload a PDF'}</span>
 			<span class="tiny muted" id="{uid}-help">{what}, up to {maxMb} MB. Drop it here or tap to choose.</span>
 		</button>
 		<input bind:this={input} type="file" accept={mimes} class="sr-only" tabindex="-1" aria-hidden="true" onchange={(e) => start(e.currentTarget.files?.[0])} />

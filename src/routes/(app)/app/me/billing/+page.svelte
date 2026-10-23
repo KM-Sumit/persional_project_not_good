@@ -17,7 +17,7 @@
 <svelte:head><title>Billing · UCI</title></svelte:head>
 
 <div class="page-narrow pb-10">
-	<PageHeader title="Billing" subtitle="Your passes, purchases and receipts" crumbs={[{ href: '/app/me', label: 'Me' }]} />
+	<PageHeader title="Billing" subtitle="Your passes, purchases and receipts" crumbs={[{ href: '/app/me', label: 'Profile' }]} />
 
 	{#if !data.passes.length && !data.payments.length}
 		<div class="card rise">

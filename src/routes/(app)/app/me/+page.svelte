@@ -28,7 +28,7 @@
 	const phone10 = $derived(p.phone?.replace(/^\+91/, '') ?? '');
 </script>
 
-<svelte:head><title>Me · UCI</title></svelte:head>
+<svelte:head><title>Profile · UCI</title></svelte:head>
 
 <div class="page-narrow pb-10 stack-lg">
 	<header class="me-head rise" style="--i: 0">

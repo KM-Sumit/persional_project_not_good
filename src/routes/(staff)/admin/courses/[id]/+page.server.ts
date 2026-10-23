@@ -1,5 +1,9 @@
 import { fail, redirect } from '@sveltejs/kit';
+import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
+import { createProduct, updateProduct } from '#lib/features/billing/server/service';
+import { db } from '#lib/server/db';
+import { products } from '#lib/server/db/schema';
 import {
 	addChapter,
 	addLesson,
@@ -15,16 +19,37 @@ import {
 	updateLesson
 } from '#lib/features/courses/server/service';
 import { send } from '#lib/features/engage/server/service';
+import { createTest, deleteTest, getTest, listTests, publishTest, unpublishTest } from '#lib/features/tests/server/service';
 import { DomainError, requireStaff, toHttp } from '#lib/server/http';
 import { attempt, courseFields, editorOptions, isPaidOf, str } from '../options.server';
 import { ytInfo, ytThumb } from '../youtube.server';
 import { lessonFields } from './lesson.server';
 import type { Actions, PageServerLoad } from './$types';
 
+async function courseProduct(courseId: string) {
+	const [p] = await db()
+		.select({ id: products.id, priceInr: products.priceInr, mrpInr: products.mrpInr, validityDays: products.validityDays })
+		.from(products)
+		.where(and(eq(products.kind, 'course'), eq(products.courseId, courseId)))
+		.limit(1);
+	return p ?? null;
+}
+
 export const load: PageServerLoad = async ({ params }) => {
-	const [course, opts] = await Promise.all([getCourseAdmin(params.id).catch(toHttp), editorOptions()]);
-	return { course: { ...course, paid: isPaidOf(course) }, ...opts };
+	const [course, opts, tests, price] = await Promise.all([
+		getCourseAdmin(params.id).catch(toHttp),
+		editorOptions(),
+		listTests({ courseId: params.id, limit: 50 }),
+		courseProduct(params.id)
+	]);
+	return { course: { ...course, paid: isPaidOf(course) }, tests: tests.items, price, ...opts };
 };
+
+async function ownTest(courseId: string, testId: string) {
+	const t = await getTest(testId);
+	if (t.courseId !== courseId) throw new DomainError(404, 'Test not found.');
+	return t;
+}
 
 const ids = (fd: FormData) => z.array(z.uuid()).min(1).parse(JSON.parse(str(fd, 'ids') || '[]'));
 
@@ -42,9 +67,10 @@ async function autoCover(courseId: string, youtubeId: string) {
 }
 
 /** What still blocks publishing, in plain words (empty = ready). */
-function publishProblems(c: Awaited<ReturnType<typeof getCourseAdmin>>) {
+function publishProblems(c: Awaited<ReturnType<typeof getCourseAdmin>>, hasPrice: boolean) {
 	const all = c.chapters.flatMap((ch) => ch.lessons);
 	const out: string[] = [];
+	if (c.isPaid && !hasPrice) out.push('Set a price for this paid course.');
 	if (!all.length) out.push('Add at least one lesson.');
 	for (const l of all) {
 		if (l.kind === 'video' && !l.youtubeId) out.push(`“${l.title}” needs a YouTube link.`);
@@ -63,12 +89,33 @@ export const actions: Actions = {
 			return { message: 'Details saved' };
 		});
 	},
+	savePrice: async (event) => {
+		const user = requireStaff(event);
+		const fd = await event.request.formData();
+		return attempt(async () => {
+			const course = await getCourseAdmin(event.params.id);
+			if (!course.isPaid) throw new DomainError(422, 'Turn this into a paid course before setting a price.');
+			const current = await courseProduct(course.id);
+			const raw = {
+				kind: 'course' as const,
+				courseId: course.id,
+				title: course.title,
+				priceInr: str(fd, 'priceInr'),
+				mrpInr: str(fd, 'mrpInr'),
+				validityDays: str(fd, 'validityDays'),
+				active: true
+			};
+			if (current) await updateProduct(current.id, raw, user.id);
+			else await createProduct(raw, user.id);
+			return { message: 'Price saved' };
+		});
+	},
 	publish: async (event) => {
 		const user = requireStaff(event);
 		const fd = await event.request.formData();
 		return attempt(async () => {
 			const c = await getCourseAdmin(event.params.id);
-			const problems = publishProblems(c);
+			const problems = publishProblems(c, Boolean(await courseProduct(c.id)));
 			if (problems.length) throw new DomainError(422, problems[0]!);
 			await setCoursePublished(c.id, true);
 			if (fd.get('notify') === 'on')
@@ -87,6 +134,52 @@ export const actions: Actions = {
 		requireStaff(event);
 		await deleteCourse(event.params.id);
 		redirect(303, '/admin/courses?deleted=1');
+	},
+	addTest: async (event) => {
+		const user = requireStaff(event);
+		const fd = await event.request.formData();
+		return attempt(async () => {
+			const course = await getCourseAdmin(event.params.id);
+			await createTest(
+				{
+					title: str(fd, 'title'),
+					durationMin: str(fd, 'durationMin') || 30,
+					kind: 'practice',
+					access: 'open',
+					courseId: course.id,
+					examId: course.examId
+				},
+				user.id
+			);
+			return { message: 'Test added to this course' };
+		});
+	},
+	publishTest: async (event) => {
+		requireStaff(event);
+		const fd = await event.request.formData();
+		return attempt(async () => {
+			await ownTest(event.params.id, str(fd, 'testId'));
+			await publishTest(str(fd, 'testId'));
+			return { message: 'Test published on this course' };
+		});
+	},
+	unpublishTest: async (event) => {
+		requireStaff(event);
+		const fd = await event.request.formData();
+		return attempt(async () => {
+			await ownTest(event.params.id, str(fd, 'testId'));
+			await unpublishTest(str(fd, 'testId'));
+			return { message: 'Test moved to draft' };
+		});
+	},
+	deleteTest: async (event) => {
+		requireStaff(event);
+		const fd = await event.request.formData();
+		return attempt(async () => {
+			await ownTest(event.params.id, str(fd, 'testId'));
+			await deleteTest(str(fd, 'testId'));
+			return { message: 'Test removed' };
+		});
 	},
 	addChapter: async (event) => {
 		requireStaff(event);

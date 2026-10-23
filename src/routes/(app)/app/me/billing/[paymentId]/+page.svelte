@@ -11,7 +11,7 @@
 
 <div class="page-narrow pb-10">
 	<div class="no-print">
-		<PageHeader title="Receipt" crumbs={[{ href: '/app/me', label: 'Me' }, { href: '/app/me/billing', label: 'Billing' }]}>
+		<PageHeader title="Receipt" crumbs={[{ href: '/app/me', label: 'Profile' }, { href: '/app/me/billing', label: 'Billing' }]}>
 			{#snippet actions()}<button class="btn btn-secondary" onclick={() => print()}><Printer /> Print or save PDF</button>{/snippet}
 		</PageHeader>
 	</div>

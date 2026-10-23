@@ -1,6 +1,6 @@
 import { error } from '@sveltejs/kit';
 import { noteAccess } from '#lib/features/billing/server/paywall';
-import { signedUrl } from '#lib/features/files/server/service';
+import { fileBytes } from '#lib/features/files/server/service';
 import { noteForUser } from '#lib/features/notes/server/service';
 import { requireUser, toHttp } from '#lib/server/http';
 import type { RequestHandler } from './$types';
@@ -14,14 +14,12 @@ export const GET: RequestHandler = async (event) => {
 	const note = await noteForUser(u, event.params.slug).catch(toHttp);
 	if (!note.fileId) error(404, 'This note has no PDF.');
 	if (!(await noteAccess(u.id, note.id))) error(403, 'Unlock this note to download it.');
-	const { url, mime } = await signedUrl(note.fileId).catch(toHttp);
-	const res = await fetch(url);
-	if (!res.ok || !res.body) error(502, 'Could not fetch the PDF. Try again.');
+	const file = await fileBytes(note.fileId).catch(toHttp);
 	const name = `${note.slug}.pdf`;
-	return new Response(res.body, {
+	return new Response(file.bytes, {
 		headers: {
-			'content-type': mime,
-			...(res.headers.get('content-length') ? { 'content-length': res.headers.get('content-length')! } : {}),
+			'content-type': file.mime,
+			'content-length': String(file.bytes.byteLength),
 			'content-disposition': `inline; filename="${name}"`,
 			'cache-control': 'private, no-store'
 		}

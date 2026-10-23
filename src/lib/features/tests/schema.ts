@@ -21,6 +21,7 @@ export const testFields = z.object({
 	kind: testKindEnum.default('practice'),
 	access: testAccessEnum.default('open'),
 	examId: optUuid(),
+	courseId: optUuid(),
 	subjectId: optUuid(),
 	sessionId: optUuid(),
 	batchId: optUuid(),
@@ -54,6 +55,7 @@ export const testListQuery = z.object({
 	status: testStatusEnum.optional(),
 	access: testAccessEnum.optional(),
 	examId: z.uuid().optional(),
+	courseId: z.uuid().optional(),
 	q: z.string().trim().max(200).optional(),
 	...cursorQuery
 });
@@ -98,6 +100,7 @@ export type TestDTO = {
 	access: TestAccess;
 	status: TestStatus;
 	examId: string | null;
+	courseId: string | null;
 	subjectId: string | null;
 	sessionId: string | null;
 	batchId: string | null;
@@ -200,7 +203,9 @@ export type AttemptScreen =
 			questions: {
 				id: string;
 				prompt: string;
+				promptHi: string | null;
 				options: string[];
+				optionsHi: string[] | null;
 				topic: string;
 				imageFileId: string | null;
 				marks: number;
@@ -235,7 +240,9 @@ export type ResultDTO = {
 	questions: {
 		id: string;
 		prompt: string;
+		promptHi: string | null;
 		options: string[];
+		optionsHi: string[] | null;
 		topic: string;
 		difficulty: Difficulty;
 		imageFileId: string | null;
@@ -247,6 +254,7 @@ export type ResultDTO = {
 		outcome: 'correct' | 'wrong' | 'skipped';
 		correctIndex: number | null; // null while solutions are hidden
 		explanation: string | null;
+		explanationHi: string | null;
 		optionPickPct: number[] | null;
 	}[];
 	topics: { topic: string; total: number; correct: number; wrong: number; skipped: number; accuracy: number }[];

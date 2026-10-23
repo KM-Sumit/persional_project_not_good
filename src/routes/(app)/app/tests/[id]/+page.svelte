@@ -6,6 +6,7 @@
 	import { Countdown, Markdown } from '#lib/components/kit';
 	import PaletteLegend from '#lib/features/tests/components/PaletteLegend.svelte';
 	import { KIND_LABEL, fmtDate, fmtNum, fmtWhen, minutes } from '#lib/features/tests/components/exam';
+	import LangPick from '#lib/features/tests/components/LangPick.svelte';
 
 	let { data, form } = $props();
 	const t = $derived(data.test);
@@ -76,6 +77,7 @@
 			{/if}
 			<p class="eyebrow mt-5 mb-3">Question palette</p>
 			<PaletteLegend />
+			<div class="mt-5"><LangPick /></div>
 		</div>
 	</section>
 

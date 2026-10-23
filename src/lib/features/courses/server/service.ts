@@ -209,7 +209,7 @@ const lessonFields = (youtube: string | null | undefined) =>
 
 export async function addLesson(chapterId: string, raw: z.input<typeof lessonInput>) {
 	const { youtube, ...input } = lessonInput.parse(raw);
-	if (input.kind === 'video' && !youtube) throw new DomainError(422, 'Add the YouTube link for this video lesson.');
+	if (input.kind === 'video' && !youtube && !input.fileId) throw new DomainError(422, 'Add a YouTube link or upload the video.');
 	const courseId = await courseIdOfChapter(chapterId);
 	const [{ n }] = (await db().select({ n: count() }).from(lessons).where(eq(lessons.chapterId, chapterId))) as [{ n: number }];
 	const [row] = await db()

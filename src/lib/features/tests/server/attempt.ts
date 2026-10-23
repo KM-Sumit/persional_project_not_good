@@ -3,6 +3,7 @@
 import { and, asc, count, desc, eq, inArray, lt, ne, sql, type SQL } from 'drizzle-orm';
 import { db } from '#lib/server/db';
 import { accessScope, hasAccess } from '#lib/features/billing/server/service';
+import { courseAccess } from '#lib/features/billing/server/paywall';
 import { attemptAnswers, attempts, batchMembers, questions, testAccessFailures, testGrants, testQuestions, tests } from '#lib/server/db/schema';
 import { DomainError } from '#lib/server/http';
 import { cached, cacheKeys } from '#lib/server/cache';
@@ -18,6 +19,11 @@ import {
 	type TestDetail
 } from '../schema';
 import { questionCountSql, totalMarksSql } from './service';
+
+function hindiOptions(en: { text: string }[], hi: { text: string }[] | null) {
+	if (!hi || hi.length !== en.length || hi.every((o) => !o.text.trim())) return null;
+	return hi.map((o) => o.text);
+}
 import {
 	GRACE_MS,
 	afterFailure,
@@ -40,6 +46,7 @@ type AttemptRow = typeof attempts.$inferSelect;
 
 /** Published test cards without per-user state: what the cache holds. */
 type PublishedCard = Omit<CatalogCard, 'window' | 'maxAttempts' | 'attemptsUsed' | 'bestScore' | 'inProgressAttemptId' | 'lock' | 'canStart'> & {
+	courseId: string | null;
 	batchId: string | null;
 	maxAttemptsRaw: number | null;
 	instructions: string;
@@ -64,6 +71,7 @@ const loadPublished = async (): Promise<PublishedCard[]> => {
 		access: t.access,
 		examId: t.examId,
 		subjectId: t.subjectId,
+		courseId: t.courseId,
 		batchId: t.batchId,
 		difficulty: t.difficulty,
 		durationMin: t.durationMin,
@@ -135,7 +143,7 @@ async function personalise(cards: PublishedCard[], userId: string, now = new Dat
 export async function catalog(userId: string): Promise<CatalogCard[]> {
 	await expireOverdue({ userId });
 	const batchIds = await userBatchIds(userId);
-	const visible = (await publishedCards()).filter((c) => !c.batchId || batchIds.has(c.batchId));
+	const visible = (await publishedCards()).filter((c) => !c.courseId && (!c.batchId || batchIds.has(c.batchId)));
 	return (await personalise(visible, userId)).map(({ _c, ...card }) => card);
 }
 
@@ -143,6 +151,7 @@ export async function testDetail(testId: string, userId: string): Promise<TestDe
 	await expireOverdue({ userId, testId });
 	const c = (await publishedCards()).find((x) => x.id === testId);
 	if (!c || (c.batchId && !(await userBatchIds(userId)).has(c.batchId))) throw new DomainError(404, 'Test not found.');
+	if (c.courseId && !(await courseAccess(userId, c.courseId))) throw new DomainError(403, 'Open this test from its course.');
 	const [{ _c, ...card }] = await personalise([c], userId);
 	const mine = await db()
 		.select({ a: attempts })
@@ -179,6 +188,7 @@ async function loadVisibleTest(testId: string, userId: string): Promise<TestRow>
 	const [t] = await db().select().from(tests).where(eq(tests.id, testId)).limit(1);
 	if (!t || t.status === 'draft' || t.status === 'archived') throw new DomainError(404, 'Test not found.');
 	if (t.batchId && !(await userBatchIds(userId)).has(t.batchId)) throw new DomainError(404, 'Test not found.');
+	if (t.courseId && !(await courseAccess(userId, t.courseId))) throw new DomainError(403, 'Open this test from its course.');
 	return t;
 }
 
@@ -304,6 +314,7 @@ async function attemptQuestions(a: AttemptRow, t: TestRow) {
 }
 
 export async function getAttempt(attemptId: string, userId: string): Promise<AttemptScreen> {
+	await expirePasswordAttempts(userId);
 	await expireOverdue({ attemptId });
 	const { a, t } = await ownAttempt(attemptId, userId);
 	if (a.status !== 'in_progress') return { state: 'closed', attemptId };
@@ -318,7 +329,9 @@ export async function getAttempt(attemptId: string, userId: string): Promise<Att
 		questions: qs.map(({ q, marks, negativeMarks }) => ({
 			id: q.id,
 			prompt: q.prompt,
+			promptHi: q.promptHi,
 			options: q.options.map((o) => o.text),
+			optionsHi: hindiOptions(q.options, q.optionsHi),
 			topic: q.topic,
 			imageFileId: q.imageFileId,
 			marks,
@@ -401,6 +414,34 @@ export async function submitAttempt(attemptId: string, userId: string): Promise<
 	return { attemptId, status: after.status as 'submitted' | 'expired' };
 }
 
+/**
+ * PT tests (password access) close at the deadline itself. Saved answers are scored.
+ * Other tests keep the short grace window for a slow phone.
+ */
+export async function expirePasswordAttempts(userId: string, now = new Date()): Promise<number> {
+	const due = await db()
+		.select({ id: attempts.id })
+		.from(attempts)
+		.innerJoin(tests, eq(tests.id, attempts.testId))
+		.where(and(eq(attempts.userId, userId), eq(attempts.status, 'in_progress'), eq(tests.access, 'password'), lt(attempts.deadlineAt, now)))
+		.limit(20);
+	for (const d of due) await grade(d.id, 'expired', now);
+	return due.length;
+}
+
+/** The student's open PT test, if one is still inside its time. Used to submit it when the clock hits zero. */
+export async function openPasswordAttempt(userId: string): Promise<{ attemptId: string; testId: string; deadlineAt: string } | null> {
+	await expirePasswordAttempts(userId);
+	const [r] = await db()
+		.select({ attemptId: attempts.id, testId: attempts.testId, deadlineAt: attempts.deadlineAt })
+		.from(attempts)
+		.innerJoin(tests, eq(tests.id, attempts.testId))
+		.where(and(eq(attempts.userId, userId), eq(attempts.status, 'in_progress'), eq(tests.access, 'password')))
+		.orderBy(asc(attempts.deadlineAt))
+		.limit(1);
+	return r ? { attemptId: r.attemptId, testId: r.testId, deadlineAt: r.deadlineAt.toISOString() } : null;
+}
+
 /** Grades every in-progress attempt past deadline + grace (optionally scoped). Called lazily on reads, and by a timer if wanted. */
 export async function expireOverdue(scope: { userId?: string; testId?: string; attemptId?: string } = {}, now = new Date()): Promise<number> {
 	const where: (SQL | undefined)[] = [
@@ -471,7 +512,9 @@ export async function getResult(attemptId: string, viewer: { userId: string; sta
 		return {
 			id: q.id,
 			prompt: q.prompt,
+			promptHi: q.promptHi,
 			options: q.options.map((o) => o.text),
+			optionsHi: hindiOptions(q.options, q.optionsHi),
 			topic: q.topic,
 			difficulty: q.difficulty,
 			imageFileId: q.imageFileId,
@@ -483,6 +526,7 @@ export async function getResult(attemptId: string, viewer: { userId: string; sta
 			outcome,
 			correctIndex: solutionsVisible ? q.correctIndex : null,
 			explanation: solutionsVisible ? q.explanation : null,
+			explanationHi: solutionsVisible ? q.explanationHi : null,
 			optionPickPct: solutionsVisible ? q.options.map((_, i) => pct(pickCount.get(`${q.id}:${i}`) ?? 0, gradedCount)) : null
 		};
 	});

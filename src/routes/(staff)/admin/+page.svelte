@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { CalendarClock, CircleAlert, FileUp, Layers, Megaphone, Plus, Sparkles, Trophy } from '@lucide/svelte';
+	import { CalendarClock, CircleAlert, Plus, Trophy } from '@lucide/svelte';
 	import { Badge, EmptyState, PageHeader, Tabs } from '#lib/components/ui';
 
 	let { data } = $props();
@@ -101,16 +101,6 @@
 	</div>
 
 	<section class="rise mt-6" style="--i: 4">
-		<div class="section-head"><h2 class="section-title">Quick actions</h2></div>
-		<nav class="quick" aria-label="Quick actions">
-			<a class="tile" href="/admin/bank/generate"><Sparkles /><span>Generate with AI</span></a>
-			<a class="tile" href="/admin/notes/new"><FileUp /><span>Upload notes</span></a>
-			<a class="tile" href="/admin/announcements"><Megaphone /><span>Send announcement</span></a>
-			<a class="tile" href="/admin/batches"><Layers /><span>Batches</span></a>
-		</nav>
-	</section>
-
-	<section class="rise mt-6" style="--i: 5">
 		<div class="section-head"><h2 class="section-title">Results</h2></div>
 		<div class="mb-3"><Tabs bind:value={tab} label="Results view" items={[{ value: 'recent', label: 'Recent results' }, { value: 'board', label: 'Scoreboard' }]} /></div>
 		{#if !data.recent.length}
@@ -154,12 +144,6 @@
 	a.kpi:hover { background: hsl(var(--muted) / .6); }
 	.kpi-value { font-size: 1.375rem; font-weight: 600; line-height: 1.2; }
 	.kpi-label { font-size: .75rem; color: hsl(var(--muted-foreground)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-	.quick { display: flex; gap: .5rem; overflow-x: auto; scrollbar-width: none; margin: 0 calc(-1 * var(--gutter)); padding: 0 var(--gutter) .25rem; }
-	.quick::-webkit-scrollbar { display: none; }
-	.tile { flex: 0 0 auto; width: 6.75rem; min-height: 5.5rem; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .5rem; padding: .75rem .5rem; text-align: center; font-size: .8125rem; font-weight: 500; line-height: 1.2; border: 1px solid hsl(var(--border)); border-radius: var(--radius); background: hsl(var(--surface)); }
-	.tile:hover { border-color: hsl(var(--foreground) / .25); }
-	.tile :global(svg) { width: 20px; height: 20px; color: hsl(var(--primary)); }
-	@media (min-width: 768px) { .quick { margin: 0; padding: 0; overflow: visible; } .tile { width: 9rem; } }
 	.cols { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.5rem; }
 	@media (min-width: 1024px) { .cols { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); } }
 	.board { display: grid; gap: .75rem; }

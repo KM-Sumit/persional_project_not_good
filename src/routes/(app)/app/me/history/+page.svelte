@@ -11,7 +11,7 @@
 <svelte:head><title>Test history · UCI</title></svelte:head>
 
 <div class="page-narrow pb-10">
-	<PageHeader title="Test history" subtitle="Every attempt, newest first." crumbs={[{ href: '/app/me', label: 'Me' }]} />
+	<PageHeader title="Test history" subtitle="Every attempt, newest first." crumbs={[{ href: '/app/me', label: 'Profile' }]} />
 
 	{#if data.items.length}
 		<div class="list rise" style="--i: 1">

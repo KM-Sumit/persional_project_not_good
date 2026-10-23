@@ -4,7 +4,9 @@ import { attempt, editorOptions } from '../../courses/options.server';
 import { saveNote } from '../note.server';
 import type { Actions, PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async () => editorOptions();
+const uuid = (v: string | null) => (v && /^[0-9a-f-]{36}$/i.test(v) ? v : null);
+
+export const load: PageServerLoad = async ({ url }) => ({ ...(await editorOptions()), subjectId: uuid(url.searchParams.get('subject')) });
 
 export const actions: Actions = {
 	default: async (event) => {

@@ -17,14 +17,16 @@ test('sniffs real types from magic bytes', () => {
 	expect(sniffMime(jpeg)).toBe('image/jpeg');
 	expect(sniffMime(webp)).toBe('image/webp');
 	expect(sniffMime(pdf)).toBe('application/pdf');
+	expect(sniffMime(new Uint8Array([0x47, 0x49, 0x46, 0x38, 0x39, 0x61]))).toBe('image/gif');
+	expect(sniffMime(new Uint8Array([0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d]))).toBe('video/mp4');
 	expect(sniffMime(new TextEncoder().encode('<svg'))).toBeNull();
 });
 
 test('enforces kind, size and type limits', () => {
 	expect(checkUpload('image', 1000, png)).toEqual({ mime: 'image/png', ext: 'png' });
-	expect(checkUpload('image', 5 * MB, jpeg)).toEqual({ mime: 'image/jpeg', ext: 'jpg' });
-	expect(checkUpload('image', 5 * MB + 1, jpeg)).toHaveProperty('error');
-	expect(checkUpload('image', 1000, pdf)).toEqual({ error: 'Use a JPEG, PNG or WebP image.' });
+	expect(checkUpload('image', 15 * MB, jpeg)).toEqual({ mime: 'image/jpeg', ext: 'jpg' });
+	expect(checkUpload('image', 15 * MB + 1, jpeg)).toHaveProperty('error');
+	expect(checkUpload('image', 1000, pdf)).toEqual({ error: 'Use a JPEG, PNG, WebP or GIF photo.' });
 	expect(checkUpload('pdf', 40 * MB, pdf)).toEqual({ mime: 'application/pdf', ext: 'pdf' });
 	expect(checkUpload('pdf', 40 * MB + 1, pdf)).toHaveProperty('error');
 	expect(checkUpload('pdf', 1000, png)).toEqual({ error: 'Use a PDF file.' });

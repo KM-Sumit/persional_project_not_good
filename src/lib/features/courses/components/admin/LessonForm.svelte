@@ -33,7 +33,8 @@
 	let youtube = $state(l?.youtubeId ? `https://youtu.be/${l.youtubeId}` : '');
 	let minutes = $state(l?.durationSec ? String(Math.round(l.durationSec / 60)) : '');
 	let body = $state(l?.body ?? '');
-	let file = $state(l?.fileId ? { id: l.fileId, name: 'Lesson PDF', url: `/api/files/${l.fileId}` } : null);
+	let file = $state(l?.fileId ? { id: l.fileId, name: l?.kind === 'video' ? 'Lesson video' : 'Lesson PDF', url: `/api/files/${l.fileId}` } : null);
+	let videoFrom = $state<'youtube' | 'file'>(l?.fileId && !l?.youtubeId ? 'file' : 'youtube');
 	let preview = $state(l?.isPreview ?? false);
 	let busy = $state(false);
 	let lookingUp = $state(false);
@@ -97,9 +98,14 @@
 	</div>
 
 	{#if kind === 'video'}
+		<div class="segmented" role="radiogroup" aria-label="Video source">
+			<label><input type="radio" name="videoFrom" value="youtube" bind:group={videoFrom} />YouTube link</label>
+			<label><input type="radio" name="videoFrom" value="file" bind:group={videoFrom} />Upload recording</label>
+		</div>
+		{#if videoFrom === 'youtube'}
 		<div class="field">
 			<label class="label" for="{uid}-yt">YouTube link</label>
-			<input id="{uid}-yt" class="input" name="youtube" bind:value={youtube} inputmode="url" autocomplete="off" placeholder="https://youtu.be/… or any YouTube link" required />
+			<input id="{uid}-yt" class="input" name="youtube" bind:value={youtube} inputmode="url" autocomplete="off" placeholder="https://youtu.be/… or any YouTube link" />
 			{#if invalid && !lookingUp}<p class="error" role="alert">That is not a YouTube link.</p>{/if}
 		</div>
 		{#if videoId}
@@ -110,6 +116,12 @@
 					<p class="line-clamp-2 font-semibold">{lookingUp ? 'Getting the title…' : title || 'No title found. Type one below.'}</p>
 				</div>
 			</div>
+		{/if}
+		{:else}
+			<div class="field">
+				<FileUpload accept="video" bind:value={file} name="fileId" label="Video recording (MP4 or WebM, up to 80 MB)" />
+			</div>
+			<input type="hidden" name="youtube" value="" />
 		{/if}
 	{/if}
 
@@ -143,7 +155,7 @@
 	<Switch bind:checked={preview} name="isPreview" label="Free preview" description="Anyone can open this lesson, even on a paid course." />
 
 	<div class="flex flex-wrap items-center gap-2">
-		<button class="btn btn-primary" disabled={busy || (kind === 'video' && (!videoId || lookingUp))}>{busy ? 'Saving…' : submitLabel}</button>
+		<button class="btn btn-primary" disabled={busy || (kind === 'video' && videoFrom === 'youtube' && (!videoId || lookingUp)) || (kind === 'video' && videoFrom === 'file' && !file)}>{busy ? 'Saving…' : submitLabel}</button>
 		{@render children?.()}
 	</div>
 </form>

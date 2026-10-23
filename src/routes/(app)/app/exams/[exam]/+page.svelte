@@ -11,7 +11,7 @@
 <svelte:head><title>{e.name} · UCI</title></svelte:head>
 
 <div class="page pb-10 stack-lg">
-	<PageHeader title={e.name} eyebrow={e.categoryName} subtitle={e.description || undefined} crumbs={[{ href: '/app', label: 'Today' }]}>
+	<PageHeader title={e.name} eyebrow={e.categoryName} subtitle={e.description || undefined} crumbs={[{ href: '/app', label: 'Home' }]}>
 		{#snippet actions()}
 			{#if data.isTarget}<span class="badge badge-primary">Your exam</span>{/if}
 		{/snippet}

@@ -42,3 +42,6 @@ android/app/src/main/assets/www/
 
 # Local user-space Postgres (no Docker)
 .local-pg/
+
+# Uploads when Cloudflare R2 is not configured
+.local-uploads/

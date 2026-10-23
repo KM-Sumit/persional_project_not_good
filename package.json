@@ -37,17 +37,18 @@
 		"#lib/*": "./src/lib/*"
 	},
 	"dependencies": {
+		"@langchain/core": "^1.2.19",
+		"@langchain/google-genai": "^1.0.0",
+		"@langchain/openai": "^1.6.2",
 		"@lucide/svelte": "^1.55.0",
+		"aws4fetch": "^1.0.20",
 		"drizzle-orm": "^0.45.4",
 		"jose": "^6.2.12",
 		"katex": "0.16.11",
+		"marked": "^18.1.1",
+		"pdfjs-dist": "^6.4.299",
 		"postgres": "^3.4.9",
 		"unpdf": "1.8.1",
-		"zod": "^4.6.6",
-		"@langchain/core": "^1.2.19",
-		"@langchain/openai": "^1.6.2",
-		"@langchain/google-genai": "^1.0.0",
-		"aws4fetch": "^1.0.20",
-		"marked": "^18.1.1"
+		"zod": "^4.6.6"
 	}
 }

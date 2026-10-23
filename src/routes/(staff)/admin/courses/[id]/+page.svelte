@@ -10,20 +10,21 @@
 	import ConfirmSheet from '#lib/components/kit/ConfirmSheet.svelte';
 	import CourseForm from '#lib/features/courses/components/admin/CourseForm.svelte';
 	import CourseOutline from '#lib/features/courses/components/admin/CourseOutline.svelte';
+	import CourseTests from '#lib/features/courses/components/admin/CourseTests.svelte';
 	import { postAction, withToast } from '#lib/features/courses/components/admin/submit';
 
 	let { data } = $props();
 	const c = $derived(data.course);
 	const lessons = $derived(c.chapters.flatMap((ch) => ch.lessons));
 	const incomplete = $derived(
-		lessons.filter((l) => (l.kind === 'video' && !l.youtubeId) || (l.kind === 'pdf' && !l.fileId) || (l.kind === 'reading' && !l.body.trim())).length
+		lessons.filter((l) => (l.kind === 'video' && !l.youtubeId && !l.fileId) || (l.kind === 'pdf' && !l.fileId) || (l.kind === 'reading' && !l.body.trim())).length
 	);
 	const checks = $derived([
 		{ ok: lessons.length > 0, label: lessons.length ? `${lessons.length} lesson${lessons.length === 1 ? '' : 's'} in ${c.chapters.length} chapter${c.chapters.length === 1 ? '' : 's'}` : 'At least one lesson' },
 		{ ok: lessons.length > 0 && incomplete === 0, label: incomplete ? `${incomplete} lesson${incomplete === 1 ? ' is' : 's are'} incomplete` : 'Every lesson has its video, text or PDF' },
 		{ ok: Boolean(c.coverFileId || c.coverUrl), label: c.coverFileId || c.coverUrl ? 'Cover image set' : 'Cover image (first video thumbnail is used)' }
 	]);
-	const ready = $derived(checks[0]!.ok && checks[1]!.ok);
+	const ready = $derived(checks[0]!.ok && checks[1]!.ok && (!c.paid || Boolean(data.price)));
 
 	let tab = $state<'outline' | 'details'>('outline');
 	let notify = $state(true);
@@ -59,6 +60,7 @@
 	<div class="editor" data-tab={tab}>
 		<section class="outline-col" aria-label="Outline">
 			<CourseOutline course={c} />
+			<CourseTests tests={data.tests} />
 		</section>
 
 		<aside class="side stack">
@@ -91,6 +93,30 @@
 					</form>
 				{/if}
 			</section>
+
+			{#if c.paid}
+				<section class="card card-pad stack" aria-label="Price">
+					<h2 class="section-title">Price</h2>
+					<p class="small muted">Students pay this amount to unlock the course.</p>
+					<form method="POST" action="?/savePrice" class="stack" use:enhance={withToast('Price saved')}>
+						<div class="field">
+							<label class="label" for="price">Price (₹)</label>
+							<input id="price" class="input" name="priceInr" type="number" inputmode="numeric" min="1" max="500000" required value={data.price?.priceInr ?? ''} />
+						</div>
+						<div class="form-row">
+							<div class="field">
+								<label class="label" for="mrp">MRP (₹) <span class="opt">optional</span></label>
+								<input id="mrp" class="input" name="mrpInr" type="number" inputmode="numeric" min="1" max="500000" value={data.price?.mrpInr ?? ''} />
+							</div>
+							<div class="field">
+								<label class="label" for="days">Access days <span class="opt">optional</span></label>
+								<input id="days" class="input" name="validityDays" type="number" inputmode="numeric" min="1" max="3650" value={data.price?.validityDays ?? ''} />
+							</div>
+						</div>
+						<button class="btn btn-primary btn-block">Save price</button>
+					</form>
+				</section>
+			{/if}
 
 			<section class="card card-pad details" aria-label="Details">
 				<h2 class="section-title mb-3">Details</h2>

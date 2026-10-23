@@ -10,7 +10,6 @@ import {
 	Newspaper,
 	Radio,
 	TicketPercent,
-	Globe,
 	House,
 	Image,
 	Inbox,
@@ -22,8 +21,8 @@ import {
 	Megaphone,
 	MessagesSquare,
 	NotebookText,
-	ShieldCheck,
 	Tags,
+	KeyRound,
 	UserRound,
 	UsersRound
 } from '@lucide/svelte';
@@ -39,15 +38,21 @@ export function activeHref(items: NavItem[], path: string) {
 }
 
 export const studentTabs: NavItem[] = [
-	{ href: '/app', label: 'Today', icon: House },
-	{ href: '/app/learn', label: 'Learn', icon: BookOpen },
+	{ href: '/app', label: 'Home', icon: House },
+	{ href: '/app/learn', label: 'Courses', icon: BookOpen },
 	{ href: '/app/tests', label: 'Tests', icon: ListChecks },
 	{ href: '/app/notes', label: 'Notes', icon: NotebookText },
-	{ href: '/app/me', label: 'Me', icon: UserRound }
+	{ href: '/app/me', label: 'Profile', icon: UserRound }
 ];
 
 export const studentGroups: NavGroup[] = [
-	{ label: 'Study', items: studentTabs.slice(0, 4) },
+	{
+		label: 'Study',
+		items: [
+			...studentTabs.slice(0, 4),
+			{ href: '/app/pt', label: 'PT Test', icon: KeyRound }
+		]
+	},
 	{
 		label: 'Every day',
 		items: [
@@ -92,8 +97,7 @@ export const staffGroups: NavGroup[] = [
 		items: [
 			{ href: '/admin/announcements', label: 'Announcements', icon: Megaphone },
 			{ href: '/admin/banners', label: 'Home banners', icon: Image },
-			{ href: '/admin/leads', label: 'Enquiries', icon: MessagesSquare },
-			{ href: '/admin/site', label: 'Website', icon: Globe }
+			{ href: '/admin/leads', label: 'Enquiries', icon: MessagesSquare }
 		]
 	},
 	{
@@ -106,10 +110,7 @@ export const staffGroups: NavGroup[] = [
 	},
 	{
 		label: 'Setup',
-		items: [
-			{ href: '/admin/taxonomy', label: 'Exams & subjects', icon: Tags },
-			{ href: '/admin/team', label: 'Team & roles', icon: ShieldCheck, adminOnly: true }
-		]
+		items: [{ href: '/admin/taxonomy', label: 'Exams & subjects', icon: Tags }]
 	}
 ];
 

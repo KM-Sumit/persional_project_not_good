@@ -10,6 +10,8 @@
 	import PaletteLegend from '#lib/features/tests/components/PaletteLegend.svelte';
 	import { LETTERS, STATE_LABEL, STATE_ORDER, clock, countStates, fmtNum, qState } from '#lib/features/tests/components/exam';
 	import { haptic } from '#lib/client/platform';
+	import LangPick from '#lib/features/tests/components/LangPick.svelte';
+	import { paperLine, paperLines, type PaperLang } from '#lib/features/tests/components/paper';
 
 	type Ans = { selected: number | null; marked: boolean };
 	type Saved = { answers: Record<string, Ans>; dirty: string[]; visited: string[]; index: number };
@@ -41,7 +43,11 @@
 	let savedOnce = $state(false);
 	let formEl = $state<HTMLFormElement>();
 
+	let lang = $state<PaperLang>('en');
 	const current = $derived(qs[index]);
+	const prompt = $derived(paperLine(current.prompt, current.promptHi, lang));
+	const optionText = $derived(paperLines(current.options, current.optionsHi, lang));
+	const hindiMissing = $derived(lang === 'hi' && !current.promptHi?.trim());
 	const cur = $derived(answers[current.id]);
 	const states = $derived(qs.map((q) => qState(answers[q.id], !!visited[q.id] || q.id === current.id)));
 	const counts = $derived(countStates(states));
@@ -258,7 +264,11 @@
 				flushKeepalive();
 			} else {
 				left = leftNow();
-				void flush();
+				if (left === 0 && !locked) {
+					locked = true;
+					submitOpen = false;
+					void Promise.race([flush(), sleep(4000)]).then(() => submit());
+				} else void flush();
 			}
 		};
 		// bfcache restore after submit: reload so the server sends us to the result.
@@ -360,12 +370,14 @@
 						</p>
 						<span class="marks font-mono tabular">+{fmtNum(current.marks)}{#if current.negativeMarks > 0}&nbsp;/ −{fmtNum(current.negativeMarks)}{/if}</span>
 					</div>
-					<p class="prompt">{current.prompt}</p>
+					<LangPick bind:value={lang} />
+					{#if hindiMissing}<p class="tiny muted">Hindi is not added for this question yet. Showing English.</p>{/if}
+					<p class="prompt" lang={lang === 'hi' && !hindiMissing ? 'hi' : 'en'}>{prompt}</p>
 					{#if current.imageFileId}
 						<img class="q-img" src="/api/files/{current.imageFileId}" alt="Figure for question {index + 1}" loading="lazy" />
 					{/if}
 					<div class="omr-list mt-5" role="radiogroup" aria-labelledby="q-label">
-						{#each current.options as text, i (i)}
+						{#each optionText as text, i (i)}
 							<label class="omr press" class:is-just={justPicked === `${current.id}:${i}`}>
 								<input type="radio" name="pick-{current.id}" value={i} checked={cur?.selected === i} disabled={locked || submitting} onchange={() => pick(i)} />
 								<span class="omr-bubble" aria-hidden="true">{LETTERS[i]}</span>

@@ -2,11 +2,12 @@
 	import AskDoubtButton from '#lib/features/doubts/components/AskDoubtButton.svelte';
 	import { enhance } from '$app/forms';
 	import { invalidateAll } from '$app/navigation';
-	import { ArrowLeft, ArrowRight, Check, FileText, ListVideo, Lock, VideoOff } from '@lucide/svelte';
+	import { ArrowLeft, ArrowRight, Check, ListVideo, Lock, VideoOff } from '@lucide/svelte';
 	import OfferPanel from '#lib/features/billing/components/OfferPanel.svelte';
 	import PageHeader from '#lib/components/ui/PageHeader.svelte';
 	import Sheet from '#lib/components/ui/Sheet.svelte';
 	import { toast } from '#lib/components/ui';
+	import PdfViewer from '#lib/components/kit/PdfViewer.svelte';
 	import YouTubePlayer from '#lib/components/kit/YouTubePlayer.svelte';
 	import Markdown from '#lib/components/kit/Markdown.svelte';
 	import Outline from '#lib/features/courses/components/Outline.svelte';
@@ -58,7 +59,7 @@
 		title={l.title}
 		eyebrow="Chapter {chapterIndex + 1} · {chapter?.title ?? ''}"
 		crumbs={[
-			{ href: '/app/learn', label: 'Learn' },
+			{ href: '/app/learn', label: 'Courses' },
 			{ href: `/app/learn/${c.slug}`, label: c.title }
 		]}
 	/>
@@ -75,7 +76,20 @@
 						</div>
 					</div>
 				{:else if l.kind === 'video'}
-					{#if l.youtubeId}
+					{#if l.fileId}
+						<div class="video">
+							<video
+								src="/api/files/{l.fileId}"
+								controls
+								playsinline
+								preload="metadata"
+								ontimeupdate={(e) => onprogress(e.currentTarget.currentTime, e.currentTarget.duration || 0)}
+								{onended}
+							>
+								<track kind="captions" label="Captions" srclang="en" />
+							</video>
+						</div>
+					{:else if l.youtubeId}
 						<div class="video"><YouTubePlayer videoId={l.youtubeId} start={done ? 0 : (data.lessonState?.positionSec ?? 0)} {onprogress} {onended} /></div>
 					{:else}
 						<div class="card card-pad unavailable">
@@ -85,11 +99,7 @@
 						</div>
 					{/if}
 				{:else if l.kind === 'pdf'}
-					<div class="card card-pad flex items-center gap-3">
-						<span class="leading-icon"><FileText /></span>
-						<div class="grow min-w-0"><p class="font-semibold">Lesson PDF</p><p class="muted small">Opens in a new tab. The link works for a few minutes.</p></div>
-						{#if l.fileId}<a class="btn btn-secondary" href="/api/files/{l.fileId}" target="_blank" rel="noopener">Open PDF</a>{/if}
-					</div>
+					{#if l.fileId}<PdfViewer src="/api/files/{l.fileId}" title={l.title} />{/if}
 				{/if}
 			{/key}
 
@@ -205,6 +215,12 @@
 		border-radius: var(--radius);
 		overflow: hidden;
 		background: hsl(var(--foreground));
+	}
+	.video video {
+		display: block;
+		width: 100%;
+		max-height: 70dvh;
+		background: black;
 	}
 	@media (max-width: 639px) {
 		.video {

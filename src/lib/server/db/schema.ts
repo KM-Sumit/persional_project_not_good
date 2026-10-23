@@ -308,6 +308,7 @@ export const tests = pgTable(
 		access: testAccess().notNull().default('open'),
 		status: testStatus().notNull().default('draft'),
 		examId: uuid().references(() => exams.id, { onDelete: 'set null' }),
+		courseId: uuid().references(() => courses.id, { onDelete: 'cascade' }), // set = belongs to that course, hidden from the Tests section
 		subjectId: uuid().references(() => subjects.id, { onDelete: 'set null' }),
 		sessionId: uuid().references(() => academicSessions.id, { onDelete: 'set null' }), // admin grouping
 		batchId: uuid().references(() => batches.id, { onDelete: 'set null' }), // null = every student
@@ -334,6 +335,7 @@ export const tests = pgTable(
 	(t) => [
 		index().on(t.status, t.kind),
 		index().on(t.examId),
+		index().on(t.courseId),
 		index().on(t.sessionId),
 		index().on(t.startsAt)
 	]

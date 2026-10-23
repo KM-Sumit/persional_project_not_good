@@ -8,7 +8,18 @@
 	import MarkdownEditor from '#lib/components/kit/MarkdownEditor.svelte';
 	import { LETTERS } from './format';
 
-	type Q = { prompt: string; options: string[]; correctIndex: number; explanation: string; topic: string; difficulty: string; imageFileId?: string | null };
+	type Q = {
+		prompt: string;
+		options: string[];
+		promptHi?: string | null;
+		optionsHi?: string[] | null;
+		explanationHi?: string | null;
+		correctIndex: number;
+		explanation: string;
+		topic: string;
+		difficulty: string;
+		imageFileId?: string | null;
+	};
 	let {
 		open = $bindable(false),
 		question = null,
@@ -36,7 +47,17 @@
 		image?: boolean;
 	} = $props();
 
-	const blank = (): Q => ({ prompt: '', options: ['', '', '', ''], correctIndex: 0, explanation: '', topic: '', difficulty: 'medium' });
+	const blank = (): Q => ({
+		prompt: '',
+		options: ['', '', '', ''],
+		promptHi: '',
+		optionsHi: ['', '', '', ''],
+		explanationHi: '',
+		correctIndex: 0,
+		explanation: '',
+		topic: '',
+		difficulty: 'medium'
+	});
 	let q = $state<Q>(blank());
 	let busy = $state(false);
 	const uid = $props.id();
@@ -45,12 +66,22 @@
 	let image = $state<{ id: string; name: string; url: string } | null>(null);
 	$effect(() => {
 		if (!open) return;
-		q = question ? { ...question, options: [...question.options] } : blank();
+		q = question
+			? {
+					...blank(),
+					...question,
+					options: [...question.options],
+					promptHi: question.promptHi ?? '',
+					optionsHi: question.options.map((_, i) => question.optionsHi?.[i] ?? ''),
+					explanationHi: question.explanationHi ?? ''
+				}
+			: blank();
 		image = question?.imageFileId ? { id: question.imageFileId, name: 'Current image', url: `/api/files/${question.imageFileId}` } : null;
 	});
 
 	function removeOption(i: number) {
 		q.options.splice(i, 1);
+		q.optionsHi?.splice(i, 1);
 		if (q.correctIndex >= q.options.length) q.correctIndex = q.options.length - 1;
 		else if (q.correctIndex > i) q.correctIndex--;
 	}
@@ -80,9 +111,26 @@
 				{/each}
 			</div>
 			{#if q.options.length < 6}
-				<button type="button" class="btn btn-ghost btn-sm self-start" onclick={() => q.options.push('')}><Plus class="size-4" />Add option</button>
+				<button type="button" class="btn btn-ghost btn-sm self-start" onclick={() => (q.options.push(''), q.optionsHi?.push(''))}><Plus class="size-4" />Add option</button>
 			{/if}
 		</fieldset>
+
+		<div class="field">
+			<label class="label" for="{uid}-prompt-hi">Question in Hindi <span class="opt">(optional)</span></label>
+			<textarea id="{uid}-prompt-hi" name="promptHi" class="textarea" rows="3" maxlength="5000" bind:value={q.promptHi}></textarea>
+		</div>
+		<fieldset class="field">
+			<legend class="label">Options in Hindi <span class="opt">(optional, same order)</span></legend>
+			<div class="stack-sm">
+				{#each q.options as _, i (i)}
+					<input class="input" name="optionHi" maxlength="1000" aria-label="Hindi option {LETTERS[i]}" bind:value={q.optionsHi![i]} />
+				{/each}
+			</div>
+		</fieldset>
+		<div class="field">
+			<label class="label" for="{uid}-explain-hi">Explanation in Hindi <span class="opt">(optional)</span></label>
+			<textarea id="{uid}-explain-hi" name="explanationHi" class="textarea" rows="3" maxlength="5000" bind:value={q.explanationHi}></textarea>
+		</div>
 
 		<div class="field">
 			<span class="label">Explanation <span class="opt">(optional)</span></span>

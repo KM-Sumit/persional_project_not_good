@@ -105,14 +105,7 @@
 				<p class="page-sub">All subjects, then topics and units.</p>
 			</div>
 		</header>
-		<nav class="segmented" aria-label="Notes">
-			<a href={href({ tab: null })} aria-current={data.tab === 'all' ? 'page' : undefined}>All Exams</a>
-			<a href={href({ tab: 'saved' })} aria-current={data.tab === 'saved' ? 'page' : undefined}>My Notes{data.savedCount ? ` (${data.savedCount})` : ''}</a>
-		</nav>
-		{#if data.tab === 'saved'}
-			{@render noteList(data.notes, 'No saved notes yet.')}
-		{:else}
-			<nav class="rows" aria-label="Subjects">
+		<nav class="rows" aria-label="Subjects">
 				{#each data.subjects as s (s.id)}
 					{@const item = look(s.name)}
 					<a class="row" href={href({ subject: s.id })} style:--tone={item.tone} style:--wash={item.wash}>
@@ -125,17 +118,9 @@
 					</a>
 				{/each}
 			</nav>
-		{/if}
 	{:else if isGk && !topic}
 		<a class="back-link" href="/app/notes" data-back><ChevronLeft />Study Notes</a>
 		<header class="page-head"><div><h1 class="page-title">{subject.name}</h1><p class="page-sub">All topics inside this subject.</p></div></header>
-		<nav class="segmented" aria-label="Topics">
-			<a href={href({ tab: null, topic: null })} aria-current={data.tab === 'all' ? 'page' : undefined}>All Topics</a>
-			<a href={href({ tab: 'saved', topic: null })} aria-current={data.tab === 'saved' ? 'page' : undefined}>My Notes</a>
-		</nav>
-		{#if data.tab === 'saved'}
-			{@render noteList(data.notes.filter((n) => n.subjectId === subject.id), 'No saved notes in this subject.')}
-		{:else}
 		<nav class="rows" aria-label="Topics">
 			{#each GK_TOPICS as t (t.slug)}
 				<a class="row" href={href({ topic: t.slug })} style:--tone={t.tone} style:--wash={t.wash}>
@@ -148,7 +133,6 @@
 				</a>
 			{/each}
 		</nav>
-		{/if}
 	{:else if topic && topic.units.length && !unit}
 		<a class="back-link" href={href({ topic: null, unit: null })} data-back><ChevronLeft />{subject.name}</a>
 		<header class="hub">

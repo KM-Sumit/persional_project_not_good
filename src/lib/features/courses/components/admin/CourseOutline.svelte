@@ -224,7 +224,7 @@
 									<span>{kindLabel[l.kind]}</span>
 									{#if l.durationSec}<span class="font-mono tabular">{fmt(l.durationSec)}</span>{/if}
 									{#if l.isPreview}<span class="badge badge-primary">Free preview</span>{/if}
-									{#if (l.kind === 'video' && !l.youtubeId) || (l.kind === 'pdf' && !l.fileId) || (l.kind === 'reading' && !l.body.trim())}<span class="badge badge-warning">Incomplete</span>{/if}
+									{#if (l.kind === 'video' && !l.youtubeId && !l.fileId) || (l.kind === 'pdf' && !l.fileId) || (l.kind === 'reading' && !l.body.trim())}<span class="badge badge-warning">Incomplete</span>{/if}
 								</span>
 							</span>
 						</a>

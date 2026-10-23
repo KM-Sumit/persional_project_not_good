@@ -30,7 +30,8 @@
 		if (preview) URL.revokeObjectURL(preview);
 		preview = null;
 		if (!f) return;
-		if (!TYPES.includes(f.type)) photoError = 'Use a JPEG, PNG or WebP photo.';
+		const type = f.type === 'image/jpg' ? 'image/jpeg' : f.type;
+		if (type && type !== 'application/octet-stream' && !TYPES.includes(type)) photoError = 'Use a JPEG, PNG or WebP photo.';
 		else if (f.size > MAX) photoError = 'That photo is too large (max 5 MB).';
 		if (photoError) return void (fileInput!.value = '');
 		preview = URL.createObjectURL(f);

@@ -13,7 +13,7 @@ export const POST: RequestHandler = async (event) => {
 		const file = data.get('file');
 		const kind = data.get('kind') ?? 'image';
 		if (!(file instanceof File)) throw new DomainError(400, 'Choose a file to upload.');
-		if (kind !== 'image' && kind !== 'pdf') throw new DomainError(400, 'Unknown file kind.');
+		if (kind !== 'image' && kind !== 'pdf' && kind !== 'video') throw new DomainError(400, 'Unknown file kind.');
 		return json(await upload(file, user.id, kind), { status: 201 });
 	} catch (e) {
 		toHttp(e);

@@ -124,7 +124,7 @@
 <svelte:head><title>Checkout · {p.title} · UCI</title></svelte:head>
 
 <div class="page checkout">
-	<PageHeader title="Checkout" crumbs={[{ href: '/app/me', label: 'Me' }]} />
+	<PageHeader title="Checkout" crumbs={[{ href: '/app/me', label: 'Profile' }]} />
 
 	{#if phase === 'success'}
 		<section class="card card-pad rise done" role="status">

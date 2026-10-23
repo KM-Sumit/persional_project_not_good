@@ -1,16 +1,18 @@
-import { error, redirect } from '@sveltejs/kit';
+import { error, isHttpError, redirect } from '@sveltejs/kit';
 import type { Handle, HandleServerError } from '@sveltejs/kit/hooks';
 import { endSession, homeFor, readSession } from '#lib/server/auth/session';
 import { isStaff } from '#lib/server/http';
 import { allowRequest } from '#lib/server/rate-limit';
 import { getUser, touchLastSeen } from '#lib/features/auth/server/service';
+import { adminEmails, googleMock } from '#lib/server/env';
 
 const area = (path: string, prefix: string) => path === prefix || path.startsWith(prefix + '/');
 const back = (url: URL) => encodeURIComponent(url.pathname + url.search);
 
-/** Log unexpected failures; never leak internals to the browser. */
+/** Log unexpected failures. Keep the message for expected 4xx errors; hide 5xx internals. */
 export const handleError: HandleServerError = ({ error: err, event }) => {
 	console.error('[app]', event.url.pathname, err);
+	if (isHttpError(err) && err.status < 500) return { message: err.body.message };
 	return { message: 'Something went wrong. Please try again.' };
 };
 
@@ -56,7 +58,12 @@ export const handle: Handle = async ({ event, resolve }) => {
 	if ((inApp || inAdmin) && !user) redirect(303, `/login?next=${back(url)}`);
 	if (user) {
 		// Every target here is homeFor(user) or a page these checks let through, so nothing loops.
-		if (inAdmin && !isStaff(user)) redirect(303, homeFor(user));
+		if (inAdmin && !isStaff(user)) {
+			// Local mock: the phone is often still signed in as a student, so /admin was opening the user app.
+			const admin = googleMock() ? [...adminEmails()][0] : undefined;
+			if (admin) redirect(303, `/auth/google?mock=${encodeURIComponent(admin)}&next=/admin`);
+			redirect(303, homeFor(user));
+		}
 		if (area(path, '/admin/team') && user.role !== 'admin') redirect(303, '/admin');
 		if (area(path, '/app') && user.role === 'student' && !user.onboardedAt) redirect(303, `/onboarding?next=${back(url)}`);
 	}

@@ -23,6 +23,9 @@ export function questionFromForm(fd: FormData) {
 		options: fd.getAll('option').map(String),
 		correctIndex: o.correctIndex,
 		explanation: o.explanation ?? '',
+		promptHi: o.promptHi ?? '',
+		optionsHi: fd.getAll('optionHi').map(String),
+		explanationHi: o.explanationHi ?? '',
 		topic: o.topic ?? '',
 		difficulty: o.difficulty || undefined,
 		...(fd.has('imageFileId') ? { imageFileId: o.imageFileId || null } : {})

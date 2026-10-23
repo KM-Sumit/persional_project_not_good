@@ -24,7 +24,7 @@
 <svelte:head><title>Current affairs · UCI</title></svelte:head>
 
 <div class="page-narrow pb-10">
-	<PageHeader title="Current affairs" crumbs={[{ href: '/app', label: 'Today' }]}>
+	<PageHeader title="Current affairs" crumbs={[{ href: '/app', label: 'Home' }]}>
 		{#snippet actions()}
 			{#if f.streak > 0}
 				<span class="streak" title="Days in a row with a daily quiz done">

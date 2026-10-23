@@ -36,14 +36,21 @@ const questionShape = z.object({
 	options: z.array(optionText).min(2, 'Give at least 2 options.').max(6, 'At most 6 options.'),
 	correctIndex: z.coerce.number().int().min(0),
 	explanation: optStr(5000),
+	promptHi: z.preprocess(blankToNull, z.string().trim().max(5000).nullish()),
+	optionsHi: z.array(z.string().trim().max(1000)).max(6).optional(),
+	explanationHi: z.preprocess(blankToNull, z.string().trim().max(5000).nullish()),
 	topic: optStr(200),
 	difficulty: difficultyEnum.default('medium'),
 	imageFileId: optUuid()
 });
 const correctInRange = (q: { options: string[]; correctIndex: number }) => q.correctIndex < q.options.length;
 const correctMsg = { message: 'The correct option must be one of the options.', path: ['correctIndex'] };
+const hindiMatches = (q: { options: string[]; optionsHi?: string[] | null }) =>
+	!q.optionsHi?.some((s) => s.trim()) || q.optionsHi.length === q.options.length;
 
-export const questionInput = questionShape.refine(correctInRange, correctMsg);
+export const questionInput = questionShape
+	.refine(correctInRange, correctMsg)
+	.refine(hindiMatches, { message: 'Hindi options must match the English options.', path: ['optionsHi'] });
 export type QuestionInput = z.infer<typeof questionInput>;
 export const questionPatch = patchOf(questionShape);
 export type QuestionPatch = z.infer<typeof questionPatch>;
@@ -80,6 +87,9 @@ export type QuestionDTO = {
 	moduleId: string | null;
 	prompt: string;
 	options: string[];
+	promptHi: string | null;
+	optionsHi: string[] | null;
+	explanationHi: string | null;
 	correctIndex: number;
 	explanation: string;
 	topic: string;

@@ -1,5 +1,5 @@
 // Staff side of tests: CRUD, lifecycle, password, grants, questions, build-from-modules, listing, results.
-import { and, asc, count, desc, eq, ilike, inArray, notInArray, sql, type SQL } from 'drizzle-orm';
+import { and, asc, count, desc, eq, ilike, inArray, isNull, notInArray, sql, type SQL } from 'drizzle-orm';
 import { db } from '#lib/server/db';
 import { attempts, modules, questions, testAccessFailures, testGrants, testQuestions, tests, users } from '#lib/server/db/schema';
 import { DomainError } from '#lib/server/http';
@@ -48,6 +48,7 @@ function toTestDTO(r: { t: TestRow; questionCount: number; totalMarks: number; a
 		access: t.access,
 		status: t.status,
 		examId: t.examId,
+		courseId: t.courseId,
 		subjectId: t.subjectId,
 		sessionId: t.sessionId,
 		batchId: t.batchId,
@@ -371,6 +372,7 @@ export async function listTests(input: TestListQuery): Promise<TestList> {
 		f.kind ? eq(tests.kind, f.kind) : undefined,
 		f.access ? eq(tests.access, f.access) : undefined,
 		f.examId ? eq(tests.examId, f.examId) : undefined,
+		f.courseId ? eq(tests.courseId, f.courseId) : isNull(tests.courseId),
 		f.q ? ilike(tests.title, `%${escapeLike(f.q)}%`) : undefined
 	];
 	const [rows, byStatus] = await Promise.all([

@@ -7,6 +7,7 @@
 	import Sheet from '#lib/components/ui/Sheet.svelte';
 	import { toast } from '#lib/components/ui';
 	import Markdown from '#lib/components/kit/Markdown.svelte';
+	import PdfViewer from '#lib/components/kit/PdfViewer.svelte';
 	import { day } from '#lib/features/courses/components/format';
 
 	let { data } = $props();
@@ -74,9 +75,12 @@
 				<Markdown html={n.html} />
 			{/if}
 
+			{#if n.fileId && !data.paywall.locked}
+				<PdfViewer src="/api/files/{n.fileId}" title={n.title} />
+			{/if}
 			{#if n.fileId}
 				<div class="card card-pad pdf">
-					<div class="min-w-0"><p class="font-semibold">PDF version</p><p class="muted small">Download to read offline or print.</p></div>
+					<div class="min-w-0"><p class="font-semibold">PDF version</p><p class="muted small">Read it above, or save a copy.</p></div>
 					<div class="flex flex-wrap gap-2">
 						<a class="btn btn-secondary" href="/api/files/{n.fileId}" target="_blank" rel="noopener"><Download />Download PDF</a>
 						{#if !data.paywall.locked}<SaveOffline kind="file" id={n.slug} title={n.title} />{/if}

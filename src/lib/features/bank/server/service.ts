@@ -30,6 +30,9 @@ export const toQuestionDTO = (q: QuestionRow): QuestionDTO => ({
 	moduleId: q.moduleId,
 	prompt: q.prompt,
 	options: q.options.map((o) => o.text),
+	promptHi: q.promptHi,
+	optionsHi: q.optionsHi?.map((o) => o.text) ?? null,
+	explanationHi: q.explanationHi,
 	correctIndex: q.correctIndex,
 	explanation: q.explanation,
 	topic: q.topic,
@@ -128,17 +131,27 @@ export async function getQuestion(id: string): Promise<QuestionDTO> {
 	return toQuestionDTO(q);
 }
 
+function storedHi(list: string[] | null | undefined, n: number) {
+	if (!list || list.every((s) => !s.trim())) return null;
+	if (list.length !== n) throw new DomainError(400, 'Hindi options must match the English options.');
+	return list.map((text) => ({ text }));
+}
+
 export async function createQuestion(
 	input: unknown,
 	opts: { moduleId?: string | null; actorId: string | null; source?: QuestionSource }
 ): Promise<QuestionDTO> {
 	const data = parse(questionInput, input);
+	const { promptHi, optionsHi, explanationHi, ...rest } = data;
 	await assertModule(opts.moduleId);
 	const [q] = await db()
 		.insert(questions)
 		.values({
-			...data,
-			options: data.options.map((text) => ({ text })),
+			...rest,
+			options: rest.options.map((text) => ({ text })),
+			promptHi: promptHi?.trim() ? promptHi : null,
+			optionsHi: storedHi(optionsHi, rest.options.length),
+			explanationHi: explanationHi?.trim() ? explanationHi : null,
 			moduleId: opts.moduleId ?? null,
 			source: opts.source ?? 'manual',
 			fingerprint: fingerprint(data.prompt),
@@ -154,15 +167,25 @@ export async function updateQuestion(id: string, input: unknown): Promise<Questi
 	const parsed = parse(questionPatch, raw);
 	const patch = Object.fromEntries(Object.entries(parsed).filter(([k]) => k in raw)) as typeof parsed;
 	const current = await getQuestion(id);
+	const { options: _options, optionsHi, promptHi, explanationHi, ...rest } = patch;
 	const options = patch.options ?? current.options;
 	const correctIndex = patch.correctIndex ?? current.correctIndex;
 	if (correctIndex >= options.length) throw new DomainError(400, 'The correct option must be one of the options.');
+	const hi =
+		'optionsHi' in raw
+			? storedHi(optionsHi, options.length)
+			: current.optionsHi && current.optionsHi.length !== options.length
+				? null
+				: undefined;
 	const [q] = await db()
 		.update(questions)
 		.set({
-			...patch,
+			...rest,
 			options: options.map((text) => ({ text })),
 			correctIndex,
+			...(hi !== undefined ? { optionsHi: hi } : {}),
+			...('promptHi' in raw ? { promptHi: promptHi?.trim() ? promptHi : null } : {}),
+			...('explanationHi' in raw ? { explanationHi: explanationHi?.trim() ? explanationHi : null } : {}),
 			...(patch.prompt ? { fingerprint: fingerprint(patch.prompt) } : {})
 		})
 		.where(eq(questions.id, id))
@@ -280,14 +303,20 @@ async function insertMany(
 		const ids = await db()
 			.insert(questions)
 			.values(
-				fresh.slice(i, i + 500).map((v) => ({
-					...v.data,
-					options: v.data.options.map((text) => ({ text })),
-					moduleId: opts.moduleId,
-					source: opts.source,
-					fingerprint: v.fp,
-					createdById: opts.actorId
-				}))
+				fresh.slice(i, i + 500).map((v) => {
+					const { promptHi, optionsHi, explanationHi, ...rest } = v.data;
+					return {
+						...rest,
+						options: rest.options.map((text) => ({ text })),
+						promptHi: promptHi?.trim() ? promptHi : null,
+						optionsHi: storedHi(optionsHi, rest.options.length),
+						explanationHi: explanationHi?.trim() ? explanationHi : null,
+						moduleId: opts.moduleId,
+						source: opts.source,
+						fingerprint: v.fp,
+						createdById: opts.actorId
+					};
+				})
 			)
 			.returning({ id: questions.id });
 		report.ids.push(...ids.map((r) => r.id));

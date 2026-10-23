@@ -8,7 +8,7 @@ import { DomainError } from '#lib/server/http';
 import { MAX_SCANNED_PAGES } from '#lib/server/ai/input';
 import { readPdf } from '#lib/server/ai/pdf';
 import { aiEnabled, fingerprint, generate, type GenerateResult, type PdfSource } from '#lib/server/ai/generate';
-import { signedUrl } from '../../files/server/service';
+import { fileBytes } from '../../files/server/service';
 import { generateInput, type AiJobDto, type GenerateInputRaw, type GeneratedQuestion } from '../schema';
 
 export { fingerprint };
@@ -21,11 +21,9 @@ type Output = { questions: GeneratedQuestion[]; requested: number; dropped: numb
 export type Deps = { generate?: typeof generate; loadFile?: (fileId: string) => Promise<Uint8Array> };
 
 async function loadFile(fileId: string): Promise<Uint8Array> {
-	const f = await signedUrl(fileId);
+	const f = await fileBytes(fileId);
 	if (f.mime !== 'application/pdf') throw new DomainError(422, 'That file is not a PDF.');
-	const res = await fetch(f.url, { signal: AbortSignal.timeout(60_000) });
-	if (!res.ok) throw new DomainError(503, 'Could not read the uploaded PDF.');
-	return new Uint8Array(await res.arrayBuffer());
+	return f.bytes;
 }
 
 function toDto(r: Row): AiJobDto {

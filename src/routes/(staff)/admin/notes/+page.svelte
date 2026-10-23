@@ -2,85 +2,117 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { replaceState } from '$app/navigation';
-	import { toast } from '#lib/components/ui';
 	import { enhance } from '$app/forms';
-	import { FileText, NotebookText, Plus } from '@lucide/svelte';
+	import { ChevronLeft, ChevronRight, NotebookText, Plus, Trash2 } from '@lucide/svelte';
 	import PageHeader from '#lib/components/ui/PageHeader.svelte';
 	import EmptyState from '#lib/components/ui/EmptyState.svelte';
-	import DataTable from '#lib/components/kit/DataTable.svelte';
-	import FilterBar from '#lib/components/kit/FilterBar.svelte';
+	import { toast } from '#lib/components/ui';
 	import { withToast } from '#lib/features/courses/components/admin/submit';
 
-	let { data } = $props();
+	let { data, form } = $props();
+	const subject = $derived(data.subject);
 
 	onMount(() => {
 		if (!page.url.searchParams.has('deleted')) return;
-		toast('Note deleted');
+		toast('Deleted');
 		const u = new URL(page.url.href);
 		u.searchParams.delete('deleted');
 		replaceState(u, page.state);
 	});
-	type Row = (typeof data.rows)[number];
 
-	const filters = $derived([
-		{ key: 'exam', label: 'Exam', options: data.exams.map((e) => ({ value: e.value, label: e.label })) },
-		{ key: 'subject', label: 'Subject', options: data.subjects },
-		{ key: 'status', label: 'Status', options: [{ value: 'published', label: 'Published' }, { value: 'draft', label: 'Draft' }] }
-	]);
-	const date = (iso: string) => new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' });
+	const confirmDelete = (e: SubmitEvent, label: string) => {
+		if (!confirm(`Delete ${label}?`)) e.preventDefault();
+	};
 </script>
 
-<svelte:head><title>Notes · UCI staff</title></svelte:head>
+<svelte:head><title>{subject ? subject.name : 'Notes'} · UCI staff</title></svelte:head>
 
 <div class="page stack">
-	<PageHeader title="Notes" subtitle="Markdown study notes with maths, and optional PDFs." crumbs={[{ href: '/admin', label: 'Dashboard' }]}>
-		{#snippet actions()}
-			<a href="/admin/notes/new" class="btn btn-primary"><Plus aria-hidden="true" />New note</a>
-		{/snippet}
-	</PageHeader>
+	{#if !subject}
+		<PageHeader title="Notes" subtitle="Every subject. Open one to add notes." crumbs={[{ href: '/admin', label: 'Dashboard' }]} />
 
-	<FilterBar search placeholder="Search notes" {filters} />
-
-	{#snippet titleCell(r: Row)}
-		<span class="block min-w-0">
-			<span class="flex items-center gap-1.5 font-semibold">
-				<span class="truncate">{r.title}</span>
-				{#if r.hasPdf}<FileText class="size-4 flex-none text-muted-foreground" aria-label="Has PDF" />{/if}
-			</span>
-			<span class="flex items-center gap-1.5 text-sm text-muted-foreground">
-				<span class="badge {r.published ? 'badge-success' : 'badge-draft'} flex-none md:hidden">{r.published ? 'Published' : 'Draft'}</span>
-				<span class="truncate">{[r.examName, r.subjectName].filter(Boolean).join(' · ') || 'No exam'} · {r.readingMinutes} min · {date(r.updatedAt)}</span>
-			</span>
-		</span>
-	{/snippet}
-	{#snippet statusCell(r: Row)}
-		<form method="POST" action="?/publish" class="inline-flex flex-wrap items-center gap-1.5" use:enhance={withToast(null)}>
-			<input type="hidden" name="id" value={r.id} />
-			<input type="hidden" name="on" value={String(!r.published)} />
-			<span class="badge {r.published ? 'badge-success' : 'badge-draft'}">{r.published ? 'Published' : 'Draft'}</span>
-			{#if r.paid}<span class="badge badge-primary">Paid</span>{/if}
-			<button class="btn btn-ghost btn-sm">{r.published ? 'Unpublish' : 'Publish'}</button>
+		<form method="POST" action="?/createSubject" class="card card-pad create" use:enhance={withToast(null)}>
+			<label class="label" for="subject-name">New subject</label>
+			<div class="row">
+				<input id="subject-name" class="input" name="name" required maxlength="120" placeholder="Subject name" />
+				<button class="btn btn-primary"><Plus />Create subject</button>
+			</div>
+			{#if form?.message}<p class="alert alert-danger">{form.message}</p>{/if}
 		</form>
-	{/snippet}
-	{#snippet emptyState()}
-		{#if data.filtered}
-			<EmptyState icon={NotebookText} title="No note matches" body="Try another exam or subject, or clear the filters." compact />
+
+		{#if data.subjects.length}
+			<nav class="list" aria-label="Subjects">
+				{#each data.subjects as s (s.id)}
+					<div class="list-row">
+						<a class="grow subject" href="/admin/notes?subject={s.id}">
+							<span class="leading-icon"><NotebookText /></span>
+							<span class="min-w-0">
+								<span class="title block truncate">{s.name}</span>
+								<span class="meta block">{s.count} {s.count === 1 ? 'note' : 'notes'}</span>
+							</span>
+							<ChevronRight class="chev" />
+						</a>
+						<form method="POST" action="?/deleteSubject" onsubmit={(e) => confirmDelete(e, s.name)}>
+							<input type="hidden" name="id" value={s.id} />
+							<button class="icon-btn" aria-label="Delete {s.name}"><Trash2 /></button>
+						</form>
+					</div>
+				{/each}
+			</nav>
 		{:else}
-			<EmptyState icon={NotebookText} title="No notes yet" body="Write one in Markdown, or upload a .md file or a PDF." compact>
-				{#snippet action()}<a href="/admin/notes/new" class="btn btn-primary">Write the first note</a>{/snippet}
+			<EmptyState icon={NotebookText} title="No subjects yet" body="Create a subject, then open it and add notes." />
+		{/if}
+		{#if data.loose}<p class="small muted">{data.loose} {data.loose === 1 ? 'note is' : 'notes are'} not in a subject. Open the note and choose one.</p>{/if}
+	{:else}
+		<PageHeader title={subject.name} subtitle="Notes in this subject" crumbs={[{ href: '/admin', label: 'Dashboard' }, { href: '/admin/notes', label: 'Notes' }]}>
+			{#snippet actions()}
+				<a href="/admin/notes/new?subject={subject.id}" class="btn btn-primary"><Plus />Add note</a>
+			{/snippet}
+		</PageHeader>
+		<a class="back-link" href="/admin/notes" data-back><ChevronLeft />All subjects</a>
+
+		{#if data.notes.length}
+			<div class="list">
+				{#each data.notes as n (n.id)}
+					<div class="list-row">
+						<a class="grow subject" href="/admin/notes/{n.id}">
+							<span class="min-w-0">
+								<span class="title block truncate">{n.title}</span>
+								<span class="meta block">{n.published ? 'Published' : 'Draft'} · {n.readingMinutes} min</span>
+							</span>
+							<ChevronRight class="chev" />
+						</a>
+						<form method="POST" action="?/publish" use:enhance={withToast(null)}>
+							<input type="hidden" name="id" value={n.id} />
+							<input type="hidden" name="on" value={String(!n.published)} />
+							<button class="btn btn-ghost btn-sm">{n.published ? 'Unpublish' : 'Publish'}</button>
+						</form>
+						<form method="POST" action="?/deleteNote" onsubmit={(e) => confirmDelete(e, n.title)}>
+							<input type="hidden" name="id" value={n.id} />
+							<input type="hidden" name="subject" value={subject.id} />
+							<button class="icon-btn" aria-label="Delete {n.title}"><Trash2 /></button>
+						</form>
+					</div>
+				{/each}
+			</div>
+		{:else}
+			<EmptyState icon={NotebookText} title="No notes in this subject" body="Add a note, write it, and publish it for students.">
+				{#snippet action()}<a href="/admin/notes/new?subject={subject.id}" class="btn btn-primary">Add note</a>{/snippet}
 			</EmptyState>
 		{/if}
-	{/snippet}
-
-	<DataTable
-		rows={data.rows}
-		getId={(r) => r.id}
-		rowHref={(r) => `/admin/notes/${r.id}`}
-		empty={emptyState}
-		columns={[
-			{ key: 'title', label: 'Note', cell: titleCell },
-			{ key: 'subjectName', label: 'Subject', hideOnPhone: true },
-			{ key: 'published', label: 'Status', cell: statusCell, hideOnPhone: true }
-		]}
-	/>
+	{/if}
 </div>
+
+<style>
+	.create { display: grid; gap: 0.5rem; }
+	.row { display: flex; gap: 0.5rem; align-items: center; }
+	.row .input { flex: 1; min-width: 0; }
+	.subject {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		min-width: 0;
+		color: inherit;
+		text-decoration: none;
+	}
+</style>

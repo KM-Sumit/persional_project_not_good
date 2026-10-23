@@ -5,6 +5,7 @@
 		Briefcase,
 		ChevronRight,
 		ClipboardList,
+		KeyRound,
 		Newspaper,
 		NotebookText,
 		Timer,
@@ -41,6 +42,7 @@
 	const shortcuts = [
 		{ href: '/app/learn', label: 'Courses', icon: BookOpen },
 		{ href: '/app/tests', label: 'Tests', icon: ClipboardList },
+		{ href: '/app/pt', label: 'PT Test', icon: KeyRound },
 		{ href: '/app/notes', label: 'Study Notes', icon: NotebookText },
 		{ href: '/jobs', label: 'Job Alert', icon: Briefcase },
 		{ href: '/app/daily', label: 'Current Affairs', icon: Newspaper },
@@ -48,7 +50,7 @@
 	] as const;
 </script>
 
-<svelte:head><title>Today · UCI</title></svelte:head>
+<svelte:head><title>Home · UCI</title></svelte:head>
 
 <div class="home">
 	<header class="home-head rise" style="--i: 0">

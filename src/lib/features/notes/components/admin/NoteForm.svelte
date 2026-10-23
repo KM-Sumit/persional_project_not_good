@@ -28,15 +28,16 @@
 		batches: Opt[];
 		action: string;
 		submitLabel: string;
+		presetSubjectId?: string | null;
 	}
-	let { note = null, exams, subjects, batches, action, submitLabel }: Props = $props();
+	let { note = null, exams, subjects, batches, action, submitLabel, presetSubjectId = null }: Props = $props();
 
 	// svelte-ignore state_referenced_locally
 	const n = note;
 	let title = $state(n?.title ?? '');
 	let body = $state(n?.body ?? '');
 	let examId = $state<string | null>(n?.examId ?? null);
-	let subjectId = $state<string | null>(n?.subjectId ?? null);
+	let subjectId = $state<string | null>(n?.subjectId ?? presetSubjectId);
 	let batchId = $state<string | null>(n?.batchId ?? '');
 	let pdf = $state(n?.fileId ? { id: n.fileId, name: 'Note PDF', url: `/api/files/${n.fileId}` } : null);
 	let paid = $state(n?.paid ?? false);

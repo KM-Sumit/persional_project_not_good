@@ -14,7 +14,8 @@
 	type Banner = (typeof data.banners)[number];
 
 	const DESTS = [
-		{ value: '/app', label: 'Today (home)' },
+		{ value: '/app', label: 'Home' },
+		{ value: '/app/pt', label: 'PT Test' },
 		{ value: '/app/learn', label: 'Courses' },
 		{ value: '/app/tests', label: 'Tests' },
 		{ value: '/app/notes', label: 'Notes' },

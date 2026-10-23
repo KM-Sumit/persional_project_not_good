@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { Atom, BookOpen, ChevronLeft, ChevronRight, CirclePlay, FileText, FlaskConical, Globe, Landmark, Lock, Newspaper } from '@lucide/svelte';
+	import { Atom, BookOpen, ChevronLeft, ChevronRight, CirclePlay, ClipboardList, FileText, FlaskConical, Globe, Landmark, Lock, Newspaper } from '@lucide/svelte';
 	import { inr, percentOff } from '#lib/features/billing/format';
 	import { duration } from '#lib/features/courses/components/format';
 
@@ -73,7 +73,7 @@
 		<nav class="segmented" aria-label="Course sections">
 			<a href={href({ view: 'classes', ch: null })} aria-current="page">Classes</a>
 			<a href={href({ view: 'notes', ch: null })}>Notes</a>
-			<a href="/app/tests">Tests</a>
+			<a href={href({ view: 'tests', ch: null })}>Tests</a>
 		</nav>
 		{#if c.chapters.length}
 			<nav class="rows" aria-label="Subjects">
@@ -108,6 +108,27 @@
 		{:else}
 			<div class="card card-pad muted small">Notes for this course are being added.</div>
 		{/if}
+	{:else if view === 'tests'}
+		<a class="back-link" href={href({ view: 'classes' })} data-back><ChevronLeft />{c.title}</a>
+		<header class="page-head"><div><h1 class="page-title">Tests</h1><p class="page-sub">Only the tests added to this course.</p></div></header>
+		{#if locked}
+			<div class="card card-pad muted small">Unlock this course to start its tests.</div>
+		{:else if data.tests.length}
+			<nav class="rows" aria-label="Course tests">
+				{#each data.tests as t (t.id)}
+					<a class="row" href="/app/tests/{t.id}">
+						<span class="mark mini"><ClipboardList strokeWidth={1.75} /></span>
+						<span class="copy">
+							<span class="name">{t.title}</span>
+							<span class="blurb">{t.questionCount} questions · {t.durationMin} min</span>
+						</span>
+						<ChevronRight class="go" />
+					</a>
+				{/each}
+			</nav>
+		{:else}
+			<div class="card card-pad muted small">Tests for this course are being added.</div>
+		{/if}
 	{:else if !locked}
 		<a class="back-link" href="/app/learn?tab=mine" data-back><ChevronLeft />Courses</a>
 		<header class="page-head"><div><h1 class="page-title">My Courses</h1></div></header>
@@ -122,7 +143,7 @@
 		<nav class="rows" aria-label="Course menu">
 			<a class="row" href={href({ view: 'classes' })}><span class="copy"><span class="name">Video classes</span><span class="blurb">{c.lessonCount} classes</span></span><ChevronRight class="go" /></a>
 			<a class="row" href={href({ view: 'notes' })}><span class="copy"><span class="name">Study material</span><span class="blurb">Notes and PDFs</span></span><ChevronRight class="go" /></a>
-			<a class="row" href="/app/tests"><span class="copy"><span class="name">Mock tests</span><span class="blurb">{data.examName ?? 'Practice tests'}</span></span><ChevronRight class="go" /></a>
+			<a class="row" href={href({ view: 'tests' })}><span class="copy"><span class="name">Mock tests</span><span class="blurb">{data.tests.length ? `${data.tests.length} in this course` : 'Tests for this course'}</span></span><ChevronRight class="go" /></a>
 			<a class="row" href="/app/doubts"><span class="copy"><span class="name">Doubt section</span><span class="blurb">Ask a teacher</span></span><ChevronRight class="go" /></a>
 		</nav>
 	{:else}
