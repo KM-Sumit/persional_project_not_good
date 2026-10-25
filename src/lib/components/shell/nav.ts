@@ -5,7 +5,6 @@ import {
 	BookOpen,
 	BookOpenText,
 	ClipboardList,
-	Download,
 	MessageCircleQuestion,
 	Newspaper,
 	Radio,
@@ -19,6 +18,7 @@ import {
 	ListChecks,
 	ReceiptIndianRupee,
 	Megaphone,
+	Share2,
 	MessagesSquare,
 	NotebookText,
 	Tags,
@@ -50,7 +50,7 @@ export const studentGroups: NavGroup[] = [
 		label: 'Study',
 		items: [
 			...studentTabs.slice(0, 4),
-			{ href: '/app/pt', label: 'PT Test', icon: KeyRound }
+			{ href: '/app/pt', label: 'Class Nest', icon: KeyRound }
 		]
 	},
 	{
@@ -58,8 +58,7 @@ export const studentGroups: NavGroup[] = [
 		items: [
 			{ href: '/app/live', label: 'Live classes', icon: Radio },
 			{ href: '/app/daily', label: 'Current affairs', icon: Newspaper },
-			{ href: '/app/doubts', label: 'Doubts', icon: MessageCircleQuestion },
-			{ href: '/app/downloads', label: 'Downloads', icon: Download }
+			{ href: '/app/doubts', label: 'Doubts', icon: MessageCircleQuestion }
 		]
 	},
 	{
@@ -97,7 +96,8 @@ export const staffGroups: NavGroup[] = [
 		items: [
 			{ href: '/admin/announcements', label: 'Announcements', icon: Megaphone },
 			{ href: '/admin/banners', label: 'Home banners', icon: Image },
-			{ href: '/admin/leads', label: 'Enquiries', icon: MessagesSquare }
+			{ href: '/admin/leads', label: 'Enquiries', icon: MessagesSquare },
+			{ href: '/admin/connect', label: 'Connect Us', icon: Share2 }
 		]
 	},
 	{

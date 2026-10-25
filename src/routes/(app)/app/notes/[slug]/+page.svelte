@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
-	import { Bookmark, Clock, Download, ListTree } from '@lucide/svelte';
+	import { Bookmark, Clock, ListTree } from '@lucide/svelte';
 	import OfferPanel from '#lib/features/billing/components/OfferPanel.svelte';
 	import PageHeader from '#lib/components/ui/PageHeader.svelte';
 	import SaveOffline from '#lib/components/pwa/SaveOffline.svelte';
@@ -77,15 +77,6 @@
 
 			{#if n.fileId && !data.paywall.locked}
 				<PdfViewer src="/api/files/{n.fileId}" title={n.title} />
-			{/if}
-			{#if n.fileId}
-				<div class="card card-pad pdf">
-					<div class="min-w-0"><p class="font-semibold">PDF version</p><p class="muted small">Read it above, or save a copy.</p></div>
-					<div class="flex flex-wrap gap-2">
-						<a class="btn btn-secondary" href="/api/files/{n.fileId}" target="_blank" rel="noopener"><Download />Download PDF</a>
-						{#if !data.paywall.locked}<SaveOffline kind="file" id={n.slug} title={n.title} />{/if}
-					</div>
-				</div>
 			{/if}
 			{#if !data.paywall.locked}
 				<div class="flex justify-center"><SaveOffline kind="note" id={n.slug} title={n.title} class="btn btn-ghost" /></div>
@@ -177,14 +168,6 @@
 	}
 	.unlock-card {
 		margin-top: 0.5rem;
-	}
-	.pdf {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 1rem;
-		flex-wrap: wrap;
-		margin-top: 2rem;
 	}
 	.end {
 		display: flex;

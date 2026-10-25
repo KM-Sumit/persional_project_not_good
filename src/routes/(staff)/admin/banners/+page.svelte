@@ -15,7 +15,7 @@
 
 	const DESTS = [
 		{ value: '/app', label: 'Home' },
-		{ value: '/app/pt', label: 'PT Test' },
+		{ value: '/app/pt', label: 'Class Nest' },
 		{ value: '/app/learn', label: 'Courses' },
 		{ value: '/app/tests', label: 'Tests' },
 		{ value: '/app/notes', label: 'Notes' },

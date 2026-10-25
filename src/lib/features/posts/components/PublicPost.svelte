@@ -1,8 +1,9 @@
 <script lang="ts">
 	// Public reading view of one post, with a sign-in call to action (the quiz and PDFs live in the app).
 	import type { Snippet } from 'svelte';
-	import { Clock, Download } from '@lucide/svelte';
+	import { Clock } from '@lucide/svelte';
 	import Markdown from '#lib/components/kit/Markdown.svelte';
+	import PdfViewer from '#lib/components/kit/PdfViewer.svelte';
 	import { fmtDay } from '../format';
 
 	type P = { title: string; html: string; publishedOn: string; examName: string | null; readingMinutes: number; fileId: string | null };
@@ -16,7 +17,7 @@
 		<span class="inline-flex items-center gap-1"><Clock class="size-3.5" aria-hidden="true" />{post.readingMinutes} min read</span>
 	</p>
 	{#if post.fileId}
-		<a class="btn btn-secondary btn-sm pdf" href="/login?next=/api/files/{post.fileId}"><Download class="size-4" aria-hidden="true" />Download PDF</a>
+		<PdfViewer src="/api/files/{post.fileId}" title={post.title} />
 	{/if}
 	{#if post.html}<Markdown html={post.html} />{/if}
 	{#if cta}<div class="card card-pad cta">{@render cta()}</div>{/if}
@@ -30,9 +31,6 @@
 		margin-bottom: 1rem;
 		font-size: 0.875rem;
 		color: hsl(var(--muted-foreground));
-	}
-	.pdf {
-		margin-bottom: 1rem;
 	}
 	.cta {
 		margin-top: 2rem;

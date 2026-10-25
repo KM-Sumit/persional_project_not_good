@@ -27,7 +27,14 @@ export const settingsSchema = z.object({
 	address: z.string().trim().max(500).optional(),
 	mapUrl: httpsUrl,
 	socials: z
-		.object({ youtube: httpsUrl, instagram: httpsUrl, facebook: httpsUrl, telegram: httpsUrl, x: httpsUrl })
+		.object({
+			youtube: httpsUrl,
+			instagram: httpsUrl,
+			facebook: httpsUrl,
+			whatsapp: httpsUrl,
+			telegram: httpsUrl,
+			x: httpsUrl
+		})
 		.partial()
 		.optional(),
 	heroHeadline: z.string().trim().max(120).optional(),

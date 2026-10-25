@@ -1,5 +1,5 @@
 // Posts (daily current affairs, job alerts, syllabus pages) and the daily current-affairs quiz. Drizzle lives only here.
-import { and, desc, eq, gte, inArray, lte, ne, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, lte, ne, sql } from 'drizzle-orm';
 import { db } from '#lib/server/db';
 import { attempts, exams, posts, tests } from '#lib/server/db/schema';
 import { DomainError } from '#lib/server/http';
@@ -10,7 +10,7 @@ import { applyGenerated, createModule } from '../../bank/server/service';
 import { addQuestions, createTest, publishTest } from '../../tests/server/service';
 import { currentSession } from '../../cohorts/server/service';
 import { postInput, postPatch, type PostCard, type PostDTO, type PostPage } from '../schema';
-import { daysBefore, fmtDay, istDate, lastDays, streakFrom, type PostKind } from '../format';
+import { daysBefore, istDate, streakFrom, type PostKind } from '../format';
 import { plainText } from './text';
 
 type Row = typeof posts.$inferSelect;
@@ -242,40 +242,79 @@ async function quizState(userId: string, testId: string | null): Promise<QuizSta
 		: { testId, status: 'done', attemptId: a.id, score: a.score == null ? null : Number(a.score) };
 }
 
+export type AffairItem = {
+	id: string;
+	slug: string;
+	title: string;
+	publishedOn: string;
+	examName: string | null;
+	quiz: QuizState | null;
+};
+
 export type DailyFeed = {
 	today: string;
-	selected: string;
-	strip: { date: string; hasPost: boolean; done: boolean }[];
+	/** YYYY-MM */
+	month: string;
+	months: { value: string; count: number }[];
+	posts: AffairItem[];
 	post: PostPage | null;
 	quiz: QuizState | null;
 	streak: number;
 };
 
-/** /app/daily: 14-day strip, the chosen day's current affairs (default: today, else the latest day with a post), quiz state, streak. */
-export async function dailyFeed(userId: string, date?: string | null): Promise<DailyFeed> {
+const MONTH = /^\d{4}-\d{2}$/;
+
+/** Last calendar day of a YYYY-MM, as YYYY-MM-DD. */
+function monthEnd(ym: string): string {
+	const [y, m] = ym.split('-').map(Number);
+	const next = m === 12 ? `${y + 1}-01-01` : `${y}-${String(m! + 1).padStart(2, '0')}-01`;
+	return daysBefore(next, 1);
+}
+
+/** /app/daily: months of published current affairs, the posts in the chosen month, and one open post. */
+export async function dailyFeed(userId: string, month?: string | null, slug?: string | null): Promise<DailyFeed> {
 	const today = istDate();
-	const days = lastDays(today, 14);
-	const [rows, done] = await Promise.all([
+	const [dates, done] = await Promise.all([
 		db()
-			.select({ p: posts, examName: exams.name })
+			.select({ publishedOn: posts.publishedOn })
 			.from(posts)
-			.leftJoin(exams, eq(exams.id, posts.examId))
-			.where(and(live('current_affairs'), inArray(posts.publishedOn, days)))
-			.orderBy(desc(posts.publishedOn), desc(posts.createdAt)),
+			.where(live('current_affairs'))
+			.orderBy(desc(posts.publishedOn)),
 		quizDays(userId, daysBefore(today, 400))
 	]);
-	const byDay = new Map<string, (typeof rows)[number]>();
-	for (const r of rows) if (!byDay.has(r.p.publishedOn)) byDay.set(r.p.publishedOn, r);
-	const doneSet = new Set(done);
-	const selected = date && days.includes(date) ? date : byDay.has(today) ? today : (rows[0]?.p.publishedOn ?? today);
-	const hit = byDay.get(selected);
+	const counts = new Map<string, number>();
+	for (const r of dates) {
+		const key = r.publishedOn.slice(0, 7);
+		counts.set(key, (counts.get(key) ?? 0) + 1);
+	}
+	const months = [...counts.entries()].map(([value, count]) => ({ value, count }));
+	const current = today.slice(0, 7);
+	const picked = month && MONTH.test(month) && counts.has(month) ? month : counts.has(current) ? current : (months[0]?.value ?? current);
+	const rows = await db()
+		.select({ p: posts, examName: exams.name })
+		.from(posts)
+		.leftJoin(exams, eq(exams.id, posts.examId))
+		.where(and(live('current_affairs'), gte(posts.publishedOn, `${picked}-01`), lte(posts.publishedOn, monthEnd(picked))))
+		.orderBy(desc(posts.publishedOn), desc(posts.createdAt));
+	const items: AffairItem[] = await Promise.all(
+		rows.map(async (r) => ({
+			id: r.p.id,
+			slug: r.p.slug,
+			title: r.p.title,
+			publishedOn: r.p.publishedOn,
+			examName: r.examName,
+			quiz: await quizState(userId, r.p.quizTestId)
+		}))
+	);
+	const hit = slug ? rows.find((r) => r.p.slug === slug) : undefined;
 	return {
 		today,
-		selected,
-		strip: days.map((d) => ({ date: d, hasPost: byDay.has(d), done: doneSet.has(d) })),
+		month: picked,
+		months,
+		posts: items,
 		post: hit ? toPage(hit.p, hit.examName) : null,
 		quiz: hit ? await quizState(userId, hit.p.quizTestId) : null,
-		streak: streakFrom(doneSet, today)
+		streak: streakFrom(new Set(done), today)
 	};
 }
 

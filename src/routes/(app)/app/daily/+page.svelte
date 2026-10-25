@@ -1,24 +1,14 @@
 <script lang="ts">
-	import { CalendarX, ChevronRight, Clock, Download, Flame, ListChecks } from '@lucide/svelte';
+	import { CalendarX, ChevronLeft, ChevronRight, Clock, Flame, ListChecks } from '@lucide/svelte';
 	import PageHeader from '#lib/components/ui/PageHeader.svelte';
 	import EmptyState from '#lib/components/ui/EmptyState.svelte';
 	import Markdown from '#lib/components/kit/Markdown.svelte';
+	import PdfViewer from '#lib/components/kit/PdfViewer.svelte';
 	import { fmtDay } from '#lib/features/posts/format';
 
 	let { data } = $props();
 	const f = $derived(data.feed);
-	const isToday = $derived(f.selected === f.today);
-	const dayName = $derived(isToday ? 'today' : fmtDay(f.selected, { day: 'numeric', month: 'short' }));
-
-	/** Keep the chosen day in view; the strip ends at today on the right. */
-	function reveal(strip: HTMLElement, _sel: string) {
-		const go = () => {
-			const el = strip.querySelector<HTMLElement>('[aria-current="date"]');
-			strip.scrollLeft = el ? el.offsetLeft - strip.clientWidth / 2 + el.clientWidth / 2 : strip.scrollWidth;
-		};
-		go();
-		return { update: go };
-	}
+	const monthLabel = $derived(fmtDay(`${f.month}-01`, { month: 'long', year: 'numeric' }));
 </script>
 
 <svelte:head><title>Current affairs · UCI</title></svelte:head>
@@ -34,26 +24,20 @@
 		{/snippet}
 	</PageHeader>
 
-	<nav class="strip" aria-label="Pick a day" use:reveal={f.selected}>
-		{#each f.strip as d (d.date)}
-			<a
-				href="?d={d.date}"
-				class="day"
-				class:has-post={d.hasPost}
-				aria-current={d.date === f.selected ? 'date' : undefined}
-				data-sveltekit-noscroll
-				data-sveltekit-replacestate
-				aria-label="{fmtDay(d.date, { weekday: 'long', day: 'numeric', month: 'long' })}{d.hasPost ? '' : ', no post'}{d.done ? ', quiz done' : ''}"
-			>
-				<span class="dow">{d.date === f.today ? 'Today' : fmtDay(d.date, { weekday: 'short' })}</span>
-				<span class="num font-mono tabular">{Number(d.date.slice(8))}</span>
-				<span class="mark" class:done={d.done} aria-hidden="true"></span>
-			</a>
-		{/each}
-	</nav>
+	{#if f.months.length}
+		<nav class="months" aria-label="Pick a month">
+			{#each f.months as m (m.value)}
+				<a href="?m={m.value}" aria-current={m.value === f.month ? 'true' : undefined} data-sveltekit-noscroll>
+					{fmtDay(`${m.value}-01`, { month: 'short', year: 'numeric' })}
+					<span class="count font-mono tabular">{m.count}</span>
+				</a>
+			{/each}
+		</nav>
+	{/if}
 
 	{#if f.post}
 		{@const p = f.post}
+		<a class="back" href="?m={f.month}"><ChevronLeft class="size-4" aria-hidden="true" />{monthLabel}</a>
 		{#if f.quiz}
 			{@const q = f.quiz}
 			<section class="card card-pad quiz rise" aria-label="Daily quiz">
@@ -65,14 +49,14 @@
 							{#if q.score != null}Score <span class="font-mono tabular">{q.score}</span> · {/if}see answers and your rank
 						</p>
 					{:else}
-						<p class="font-semibold">{isToday ? "Today's quiz" : `Quiz for ${dayName}`}</p>
+						<p class="font-semibold">Quiz for {fmtDay(p.publishedOn, { day: 'numeric', month: 'short' })}</p>
 						<p class="text-sm text-muted-foreground">10 quick questions on this page. Keeps your streak going.</p>
 					{/if}
 				</div>
 				{#if q.status === 'done' && q.attemptId}
 					<a class="btn btn-secondary btn-sm flex-none" href="/app/results/{q.attemptId}">Result<ChevronRight class="size-4" aria-hidden="true" /></a>
 				{:else}
-					<a class="btn btn-primary btn-sm flex-none" href="/app/tests/{q.testId}">{q.status === 'in_progress' ? 'Continue quiz' : isToday ? "Take today's quiz" : 'Take quiz'}</a>
+					<a class="btn btn-primary btn-sm flex-none" href="/app/tests/{q.testId}">{q.status === 'in_progress' ? 'Continue quiz' : 'Take quiz'}</a>
 				{/if}
 			</section>
 		{/if}
@@ -85,16 +69,32 @@
 				<span class="inline-flex items-center gap-1"><Clock class="size-3.5" aria-hidden="true" />{p.readingMinutes} min</span>
 			</p>
 			{#if p.fileId}
-				<a class="btn btn-secondary btn-sm pdf" href="/api/files/{p.fileId}" target="_blank" rel="noopener"><Download class="size-4" aria-hidden="true" />Download PDF</a>
+				<PdfViewer src="/api/files/{p.fileId}" title={p.title} />
 			{/if}
 			{#if p.html}<Markdown html={p.html} />{/if}
 		</article>
+	{:else if f.posts.length}
+		<h2 class="month-title">{monthLabel}</h2>
+		<ul class="list">
+			{#each f.posts as p (p.id)}
+				<li>
+					<a class="row" href="?m={f.month}&p={p.slug}">
+						<span class="when">
+							<span class="num font-mono tabular">{Number(p.publishedOn.slice(8))}</span>
+							<span class="dow">{fmtDay(p.publishedOn, { month: 'short' })}</span>
+						</span>
+						<span class="min-w-0 flex-1">
+							<span class="title">{p.title}</span>
+							{#if p.examName}<span class="exam">{p.examName}</span>{/if}
+						</span>
+						{#if p.quiz?.status === 'done'}<span class="badge">Quiz done</span>{/if}
+						<ChevronRight class="size-4 flex-none text-muted-foreground" aria-hidden="true" />
+					</a>
+				</li>
+			{/each}
+		</ul>
 	{:else}
-		<EmptyState
-			icon={CalendarX}
-			title={isToday ? "Today's current affairs are not up yet" : `Nothing posted for ${dayName}`}
-			body={isToday ? 'They usually go up by the morning. Pick an earlier day meanwhile.' : 'Pick another day from the strip above.'}
-		/>
+		<EmptyState icon={CalendarX} title="Nothing posted this month" body="Pick another month, or check back when a new post is published." />
 	{/if}
 </div>
 
@@ -110,7 +110,7 @@
 		font-size: 0.8125rem;
 		font-weight: 600;
 	}
-	.strip {
+	.months {
 		display: flex;
 		gap: 0.375rem;
 		overflow-x: auto;
@@ -118,61 +118,99 @@
 		margin-bottom: 1rem;
 		padding: 0.25rem 0;
 	}
-	/* Phones: let the strip run edge to edge so it reads as scrollable. */
-	@media (max-width: 767px) {
-		.strip {
-			margin-inline: calc(-1 * var(--gutter));
-			padding-inline: var(--gutter);
-		}
-	}
-	.strip::-webkit-scrollbar {
+	.months::-webkit-scrollbar {
 		display: none;
 	}
-	.day {
+	.months a {
 		flex: none;
-		display: grid;
-		justify-items: center;
-		gap: 0.125rem;
-		min-width: 3.25rem;
-		padding: 0.5rem 0.25rem 0.375rem;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.4rem;
+		padding: 0.45rem 0.7rem;
 		border: 1px solid hsl(var(--border));
-		border-radius: 12px;
+		border-radius: 999px;
 		background: hsl(var(--surface));
-		color: hsl(var(--muted-foreground));
-		text-decoration: none;
-	}
-	.day.has-post {
 		color: hsl(var(--foreground));
+		text-decoration: none;
+		font-size: 0.8125rem;
+		font-weight: 650;
 	}
-	.day[aria-current='date'] {
+	.months a[aria-current='true'] {
 		border-color: hsl(var(--primary));
 		background: hsl(var(--primary));
 		color: hsl(var(--primary-foreground));
+	}
+	.count {
+		font-size: 0.75rem;
+		opacity: 0.75;
+	}
+	.month-title {
+		font-size: 1.125rem;
+		margin-bottom: 0.75rem;
+	}
+	.list {
+		list-style: none;
+		display: grid;
+		gap: 0.5rem;
+		margin: 0;
+		padding: 0;
+	}
+	.row {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		padding: 0.75rem;
+		border: 1px solid hsl(var(--border));
+		border-radius: 1rem;
+		background: hsl(var(--surface));
+		color: inherit;
+		text-decoration: none;
+	}
+	.when {
+		display: grid;
+		justify-items: center;
+		min-width: 2.75rem;
+		line-height: 1.1;
+	}
+	.num {
+		font-size: 1.125rem;
+		font-weight: 700;
 	}
 	.dow {
 		font-size: 0.6875rem;
 		font-weight: 600;
 		text-transform: uppercase;
-		letter-spacing: 0.02em;
+		color: hsl(var(--muted-foreground));
 	}
-	.num {
-		font-size: 1.125rem;
-		font-weight: 600;
-		line-height: 1.2;
+	.title {
+		display: block;
+		font-weight: 650;
+		line-height: 1.3;
 	}
-	/* OMR-style mark: hollow = posted, filled = quiz done, invisible = nothing that day. */
-	.mark {
-		width: 0.5rem;
-		height: 0.5rem;
-		border-radius: 50%;
-		border: 1.5px solid transparent;
+	.exam {
+		display: block;
+		margin-top: 0.15rem;
+		font-size: 0.75rem;
+		color: hsl(var(--muted-foreground));
 	}
-	.has-post .mark {
-		border-color: currentColor;
+	.badge {
+		flex: none;
+		font-size: 0.6875rem;
+		font-weight: 700;
+		padding: 0.2rem 0.45rem;
+		border-radius: 999px;
+		background: hsl(var(--success) / 0.12);
+		color: hsl(var(--success));
 	}
-	.mark.done {
-		background: currentColor;
-		border-color: currentColor;
+	.back {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.25rem;
+		margin-bottom: 0.75rem;
+		font-size: 0.875rem;
+		font-weight: 650;
+		color: hsl(var(--muted-foreground));
+		text-decoration: none;
 	}
 	.quiz {
 		display: flex;
@@ -206,8 +244,5 @@
 		margin: 0.375rem 0 1rem;
 		font-size: 0.875rem;
 		color: hsl(var(--muted-foreground));
-	}
-	.pdf {
-		margin-bottom: 1rem;
 	}
 </style>

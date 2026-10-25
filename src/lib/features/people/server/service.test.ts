@@ -52,8 +52,10 @@ test('onboarding, profile stats, roles, suspension', async () => {
 	const s = await mk('Stu');
 	const t = await mk('Tea', 'teacher');
 	const a = await mk('Adm', 'admin');
-	const examless = svc.completeOnboarding(s.id, { name: 'Stu Dent', phone: '9876500000' } as never);
-	await expect(examless).rejects.toThrow();
+	await expect(svc.completeOnboarding(s.id, { phone: '9876500000' } as never)).rejects.toThrow();
+	const onboarded = await svc.completeOnboarding(s.id, { name: 'Stu Dent', phone: '9876500000' });
+	expect(onboarded.onboarded).toBe(true);
+	expect(onboarded.targetExamId).toBeNull();
 
 	const prof = await svc.getProfile(s.id);
 	expect(prof.stats).toEqual({ attempts: 0, avgPercent: null, coursesInProgress: 0, lessonsCompleted: 0 });

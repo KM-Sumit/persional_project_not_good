@@ -72,7 +72,6 @@
 	{#if status === 'loading'}<p class="muted small">Opening {title}…</p>{/if}
 	{#if status === 'error'}
 		<p class="error" role="alert">This PDF could not be opened in the app.</p>
-		<a class="btn btn-secondary btn-sm" href={src}>Download PDF</a>
 	{/if}
 	<div class="pages" bind:this={box} aria-label={title}></div>
 </div>

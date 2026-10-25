@@ -11,7 +11,7 @@ export const load: PageServerLoad = async (event) => {
 	return { settings, toppers, faculty };
 };
 
-const SOCIALS = ['youtube', 'instagram', 'facebook', 'telegram', 'x'] as const;
+const SOCIALS = ['youtube', 'instagram', 'facebook', 'whatsapp', 'telegram', 'x'] as const;
 
 /** Builds the patch for the keys a section card sent; "" clears a key. */
 function settingsPatch(d: FormData) {

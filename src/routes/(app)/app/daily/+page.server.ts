@@ -4,5 +4,5 @@ import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async (event) => {
 	const u = requireUser(event);
-	return { feed: await dailyFeed(u.id, event.url.searchParams.get('d')) };
+	return { feed: await dailyFeed(u.id, event.url.searchParams.get('m'), event.url.searchParams.get('p')) };
 };

@@ -100,7 +100,7 @@
 		<form class="card rise" style="--i: 2" method="POST" action="?/settings" oninput={() => (dirty.socials = true)} use:enhance={toasting(() => (dirty.socials = false), { reset: false })}>
 			<div class="card-head"><h2>Social links {@render dot('socials')}</h2><button class="btn btn-primary btn-sm" disabled={!dirty.socials}>Save</button></div>
 			<div class="card-pad stack">
-				{#each [['youtube', 'YouTube'], ['instagram', 'Instagram'], ['facebook', 'Facebook'], ['telegram', 'Telegram'], ['x', 'X (Twitter)']] as [k, label] (k)}
+				{#each [['youtube', 'YouTube'], ['instagram', 'Instagram'], ['facebook', 'Facebook'], ['whatsapp', 'WhatsApp'], ['telegram', 'Telegram'], ['x', 'X (Twitter)']] as [k, label] (k)}
 					<div class="field"><label class="label" for="so-{k}">{label}</label><input id="so-{k}" class="input" name="socials.{k}" value={s.socials?.[k as 'youtube'] ?? ''} placeholder="https://…" /></div>
 				{/each}
 			</div>

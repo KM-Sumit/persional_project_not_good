@@ -7,18 +7,18 @@
 		t.inProgressAttemptId ? `/app/tests/${t.id}/attempt/${t.inProgressAttemptId}` : `/app/tests/${t.id}`;
 </script>
 
-<svelte:head><title>PT Test · UCI</title></svelte:head>
+<svelte:head><title>Class Nest · UCI</title></svelte:head>
 
 <div class="page flow">
 	<header class="page-head">
 		<div>
-			<h1 class="page-title">PT Test</h1>
+			<h1 class="page-title">Class Nest</h1>
 			<p class="page-sub">Password tests from your teacher. Ask them for the password before you start.</p>
 		</div>
 	</header>
 
 	{#if data.tests.length}
-		<nav class="list" aria-label="PT tests">
+		<nav class="list" aria-label="Class Nest">
 			{#each data.tests as t (t.id)}
 				<a class="list-row" href={open(t)}>
 					<span class="leading-icon"><KeyRound /></span>
@@ -31,6 +31,6 @@
 			{/each}
 		</nav>
 	{:else}
-		<EmptyState icon={KeyRound} title="No PT tests yet" body="When your teacher publishes a password test, it shows up here." />
+		<EmptyState icon={KeyRound} title="No Class Nest tests yet" body="When your teacher publishes a password test, it shows up here." />
 	{/if}
 </div>

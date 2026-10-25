@@ -36,10 +36,9 @@ test('posts: create, publish rule, public reads, daily feed and streak', async (
 	await db().update(posts).set({ quizTestId: t!.id }).where(inArray(posts.id, [p.id]));
 
 	let feed = await svc.dailyFeed(u!.id);
-	expect(feed.selected).toBe(today);
-	expect(feed.post?.id).toBe(p.id);
-	expect(feed.quiz?.status).toBe('todo');
-	expect(feed.strip.length).toBe(14);
+	expect(feed.month).toBe(today.slice(0, 7));
+	expect(feed.posts.some((x) => x.id === p.id)).toBe(true);
+	expect(feed.posts.find((x) => x.id === p.id)?.quiz?.status).toBe('todo');
 	expect(feed.streak).toBe(0);
 
 	// Finished daily quizzes yesterday and today -> streak 2.
@@ -47,10 +46,10 @@ test('posts: create, publish rule, public reads, daily feed and streak', async (
 	await db()
 		.insert(attempts)
 		.values([daysBefore(today, 1), today].map((d, i) => ({ testId: t!.id, userId: u!.id, number: i + 1, status: 'submitted' as const, questionOrder: [], deadlineAt: at(d), submittedAt: at(d), score: 3 })));
-	feed = await svc.dailyFeed(u!.id);
+	feed = await svc.dailyFeed(u!.id, today.slice(0, 7), p.slug);
 	expect(feed.streak).toBe(2);
 	expect(feed.quiz?.status).toBe('done');
-	expect(feed.strip.at(-1)).toEqual({ date: today, hasPost: true, done: true });
+	expect(feed.post?.id).toBe(p.id);
 	const t4 = await svc.todayFor(u!.id);
 	expect(t4.post?.slug).toBe(p.slug);
 	expect(t4.streak).toBe(2);

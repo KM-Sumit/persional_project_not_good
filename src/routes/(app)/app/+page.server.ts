@@ -5,6 +5,7 @@ import { examMap } from '#lib/features/taxonomy/server/service';
 import { catalog } from '#lib/features/tests/server/attempt';
 import { nextLiveFor } from '#lib/features/live/server/service';
 import { todayFor } from '#lib/features/posts/server/service';
+import { getSettings } from '#lib/features/site/server/service';
 import { requireUser } from '#lib/server/http';
 import type { PageServerLoad } from './$types';
 
@@ -13,14 +14,15 @@ const DAY = 86_400_000;
 export const load: PageServerLoad = async (event) => {
 	const u = requireUser(event);
 	const exam = u.targetExamId;
-	const [cont, tests, notes, banners, exams, liveClass, daily] = await Promise.all([
+	const [cont, tests, notes, banners, exams, liveClass, daily, settings] = await Promise.all([
 		continueLearning(u).catch(() => null),
 		catalog(u.id).catch(() => []),
 		notesForUser(u, exam ? { examId: exam } : {}).catch(() => []),
 		listEnabledBanners().catch(() => []),
 		examMap(),
 		nextLiveFor(u.id).catch(() => null),
-		todayFor(u.id).catch(() => null)
+		todayFor(u.id).catch(() => null),
+		getSettings().catch(() => null)
 	]);
 	const now = Date.now();
 	const mine = tests.filter((t) => !exam || !t.examId || t.examId === exam);
@@ -46,6 +48,14 @@ export const load: PageServerLoad = async (event) => {
 		notes: notes.slice(0, 4),
 		banners,
 		liveClass,
-		daily
+		daily,
+		connect: {
+			youtube: settings?.socials?.youtube ?? null,
+			instagram: settings?.socials?.instagram ?? null,
+			facebook: settings?.socials?.facebook ?? null,
+			whatsapp:
+				settings?.socials?.whatsapp ??
+				(settings?.whatsappNumber ? `https://wa.me/${settings.whatsappNumber.replace(/\D/g, '')}` : null)
+		}
 	};
 };

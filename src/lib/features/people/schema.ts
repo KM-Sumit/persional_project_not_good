@@ -24,10 +24,9 @@ export const profileInput = z.object({
 });
 export const profileUpdate = patchOf(profileInput);
 
-/** Onboarding needs name + phone + target exam. */
+/** Onboarding asks for name and mobile. The target exam is chosen later in the profile. */
 export const onboardingInput = profileInput.extend({
-	phone: profileInput.shape.phone.refine((v) => Boolean(v), 'Enter your mobile number.'),
-	targetExamId: z.uuid('Pick the exam you are preparing for.')
+	phone: profileInput.shape.phone.refine((v) => Boolean(v), 'Enter your mobile number.')
 });
 
 export const peopleSorts = ['newest', 'oldest', 'name', 'active'] as const;
