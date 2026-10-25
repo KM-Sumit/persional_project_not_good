@@ -21,5 +21,5 @@
 </script>
 
 <button type="button" class={klass} onclick={toggle} aria-label="Switch light or dark mode" title="Light or dark mode">
-	<Sun class="hidden dark:block" aria-hidden="true" /><Moon class="dark:hidden" aria-hidden="true" />
+	<Sun class="dark:hidden" aria-hidden="true" /><Moon class="hidden dark:block" aria-hidden="true" />
 </button>
