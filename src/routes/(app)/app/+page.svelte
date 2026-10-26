@@ -17,7 +17,6 @@
 	} from '@lucide/svelte';
 	import Sheet from '#lib/components/ui/Sheet.svelte';
 	import BannerCarousel from '#lib/features/engage/components/BannerCarousel.svelte';
-	import LessonKindIcon from '#lib/features/courses/components/LessonKindIcon.svelte';
 
 	let { data } = $props();
 
@@ -30,7 +29,7 @@
 	);
 	const greet = $derived(hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening');
 
-	const next = $derived(data.inProgress ? 'resume' : data.cont ? 'continue' : 'start');
+	const next = $derived(data.inProgress ? 'resume' : 'start');
 
 	const shortcuts = [
 		{ href: '/app/learn', label: 'Courses', icon: BookOpen, tone: 'courses' },
@@ -76,17 +75,6 @@
 				<a class="btn btn-primary btn-lg btn-block" href="/app/tests/{t.id}/attempt/{t.inProgressAttemptId}"
 					>Resume test <ArrowRight /></a
 				>
-			</article>
-		{:else if next === 'continue' && data.cont}
-			{@const c = data.cont}
-			<article class="hero-card">
-				<p class="eyebrow">Continue learning</p>
-				<h2 class="hero-title">{c.lesson.title}</h2>
-				<p class="hero-copy flex items-center gap-1.5"><LessonKindIcon kind={c.lesson.kind} />{c.course.title}</p>
-				<a class="btn btn-primary btn-lg btn-block" href="/app/learn/{c.course.slug}/{c.lesson.id}">
-					{c.lesson.positionSec > 0 ? 'Resume lesson' : 'Start lesson'}
-					<ArrowRight />
-				</a>
 			</article>
 		{/if}
 	</section>

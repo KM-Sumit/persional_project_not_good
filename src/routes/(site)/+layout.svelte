@@ -20,7 +20,6 @@
 	];
 	const path = $derived(page.url.pathname);
 	const current = (href: string) => path === href || path.startsWith(href + '/');
-	const appHref = $derived(data.user ? (data.user.role === 'student' ? '/app' : '/admin') : null);
 	const st = $derived(data.site.settings);
 	const contact = $derived({ phone: st.contactPhone, email: st.email, address: st.address });
 	const wa = $derived(st.whatsappNumber ? `https://wa.me/${st.whatsappNumber.replace(/\D/g, '')}` : null);
@@ -50,9 +49,7 @@
 			{/if}
 			<div class="site-actions">
 				<ThemeToggle />
-				{#if appHref}
-					<a href={appHref} class="btn btn-ink btn-sm">Open app<ArrowRight /></a>
-				{:else if !bare}
+				{#if !data.user && !bare}
 					<a href="/login" class="btn btn-ghost btn-sm hidden sm:inline-flex">Sign in</a>
 					<a href="/login?next=/app/tests" class="btn btn-primary btn-sm hidden sm:inline-flex">Free mock test</a>
 				{/if}
@@ -75,14 +72,12 @@
 					<a href={l.href} aria-current={current(l.href) ? 'page' : undefined}>{l.label}<ArrowRight /></a>
 				{/each}
 			</nav>
-			<div class="grid gap-2">
-				{#if appHref}
-					<a href={appHref} class="btn btn-ink btn-lg btn-block">Open app</a>
-				{:else}
+			{#if !data.user}
+				<div class="grid gap-2">
 					<a href="/login?next=/app/tests" class="btn btn-primary btn-lg btn-block">Take a free mock test</a>
 					<a href="/login" class="btn btn-secondary btn-lg btn-block">Sign in with Google</a>
-				{/if}
-			</div>
+				</div>
+			{/if}
 		</div>
 	{/if}
 

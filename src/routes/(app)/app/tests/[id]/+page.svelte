@@ -19,7 +19,7 @@
 		if (resumeHref) return null;
 		if (t.window === 'upcoming') return 'This test has not opened yet.';
 		if (t.window === 'ended') return 'This test has ended.';
-		if (t.lock === 'paid') return 'This is a paid test. Unlock it to start.';
+		if (t.lock === 'paid') return t.setId ? 'This set is paid. One payment opens every test in it.' : 'This is a paid test. Unlock it to start.';
 		if (t.questionCount === 0) return 'This test has no questions yet.';
 		if (attemptsLeft === 0) return t.maxAttempts === 1 ? 'You have already taken this test.' : `You have used all ${t.maxAttempts} attempts.`;
 		return null;
@@ -108,7 +108,7 @@
 		{#if resumeHref}
 			<a class="btn btn-primary btn-lg" href={resumeHref}><RotateCcw /> Resume test</a>
 		{:else if t.lock === 'paid' && !blocker?.includes('ended')}
-			<a class="btn btn-primary btn-lg" href="/app/checkout?test={t.id}"><Lock /> Unlock{#if t.priceInr}&nbsp;for <span class="font-mono">₹{t.priceInr}</span>{/if}</a>
+			<a class="btn btn-primary btn-lg" href={t.setProductId ? `/app/checkout?product=${t.setProductId}` : `/app/checkout?test=${t.id}`}><Lock /> Unlock{#if (t.setId ? t.setPriceInr : t.priceInr)}&nbsp;for <span class="font-mono">₹{t.setId ? t.setPriceInr : t.priceInr}</span>{/if}</a>
 		{:else}
 			<form
 				method="POST"

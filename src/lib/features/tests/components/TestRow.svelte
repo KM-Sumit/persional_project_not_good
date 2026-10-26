@@ -26,7 +26,7 @@
 		<div class="head">
 			<a {href} class="row-link title">{t.title}</a>
 			{#if t.inProgressAttemptId}<span class="badge badge-primary">Resume</span>
-			{:else if t.lock === 'paid'}<span class="badge badge-warning"><Lock class="size-3" />Paid</span>
+			{:else if t.lock === 'paid'}<span class="badge badge-warning"><Lock class="size-3" />{t.setId ? 'Set' : 'Paid'}</span>
 			{:else if t.lock === 'password'}<span class="badge"><KeyRound class="size-3" />Password</span>
 			{:else if t.access === 'paid'}<span class="badge badge-success">Purchased</span>
 			{:else if t.access === 'open'}<span class="badge badge-success">Free</span>{/if}
@@ -34,7 +34,7 @@
 		<p class="meta tabular">{meta}</p>
 	</div>
 	{#if t.lock === 'paid'}
-		<a class="btn btn-sm btn-secondary unlock" href="/app/checkout?test={t.id}">Unlock{#if t.priceInr}&nbsp;<span class="tabular">₹{t.priceInr}</span>{/if}</a>
+		<a class="btn btn-sm btn-secondary unlock" href={t.setProductId ? `/app/checkout?product=${t.setProductId}` : `/app/checkout?test=${t.id}`}>Unlock{#if (t.setId ? t.setPriceInr : t.priceInr)}&nbsp;<span class="tabular">₹{t.setId ? t.setPriceInr : t.priceInr}</span>{/if}</a>
 	{:else}
 		<ChevronRight class="chev" aria-hidden="true" />
 	{/if}

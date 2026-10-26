@@ -28,6 +28,8 @@ test('categories, exams, subjects: CRUD, slugs, reorder, enable, cached tree', a
 	const t = await svc.tree();
 	const cat = t.categories.find((x) => x.id === c.id)!;
 	expect(cat.slug).toBe(`cat-${tag}`);
+	expect(cat.logoFileId).toBeNull();
+	await svc.updateCategory(c.id, { logoFileId: null });
 	expect(cat.exams.map((e) => e.slug)).toEqual([`exam-${tag}-2`, `exam-${tag}`]);
 	expect(svc.enabledOnly(t).categories.find((x) => x.id === c.id)!.exams.map((e) => e.id)).toEqual([e2.id]);
 	expect(t.subjects.some((x) => x.id === s.id)).toBe(true);

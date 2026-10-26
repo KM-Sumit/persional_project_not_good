@@ -70,6 +70,7 @@ export const examCategories = pgTable('exam_categories', {
 	name: text().notNull(),
 	slug: text().notNull().unique(),
 	description: text().notNull().default(''),
+	logoFileId: uuid(),
 	sortOrder: integer().notNull().default(0),
 	enabled: boolean().notNull().default(true),
 	createdAt: createdAt()
@@ -297,6 +298,19 @@ export const questions = pgTable(
 );
 
 // ---------- tests ----------
+/** A named group of tests for one exam, such as "Constable mock set". */
+export const testSets = pgTable('test_sets', {
+	id: id(),
+	name: text().notNull(),
+	examId: uuid().references(() => exams.id, { onDelete: 'cascade' }),
+	/** One gate for every test in the set. The tests themselves stay open. */
+	access: testAccess().notNull().default('open'),
+	priceInr: integer(),
+	passwordHash: text(),
+	createdAt: createdAt(),
+	updatedAt: updatedAt()
+});
+
 export const tests = pgTable(
 	'tests',
 	{
@@ -308,6 +322,7 @@ export const tests = pgTable(
 		access: testAccess().notNull().default('open'),
 		status: testStatus().notNull().default('draft'),
 		examId: uuid().references(() => exams.id, { onDelete: 'set null' }),
+		setId: uuid().references(() => testSets.id, { onDelete: 'set null' }),
 		courseId: uuid().references(() => courses.id, { onDelete: 'cascade' }), // set = belongs to that course, hidden from the Tests section
 		subjectId: uuid().references(() => subjects.id, { onDelete: 'set null' }),
 		sessionId: uuid().references(() => academicSessions.id, { onDelete: 'set null' }), // admin grouping
@@ -335,6 +350,7 @@ export const tests = pgTable(
 	(t) => [
 		index().on(t.status, t.kind),
 		index().on(t.examId),
+		index().on(t.setId),
 		index().on(t.courseId),
 		index().on(t.sessionId),
 		index().on(t.startsAt)
@@ -580,6 +596,7 @@ export const products = pgTable(
 		examId: uuid().references(() => exams.id, { onDelete: 'set null' }),
 		courseId: uuid().references(() => courses.id, { onDelete: 'cascade' }),
 		testId: uuid().references(() => tests.id, { onDelete: 'cascade' }),
+		setId: uuid().references(() => testSets.id, { onDelete: 'cascade' }),
 		validityDays: integer(), // null = until validUntil or forever
 		validUntil: timestamp({ withTimezone: true }), // e.g. exam date
 		active: boolean().notNull().default(true),

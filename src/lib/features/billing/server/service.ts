@@ -182,17 +182,18 @@ export async function hasAccess(userId: string, t: { examId?: string | null; cou
 export async function accessScope(userId: string) {
 	const [rows, grants] = await Promise.all([
 		db()
-			.select({ kind: products.kind, examId: products.examId, courseId: products.courseId, testId: products.testId })
+			.select({ kind: products.kind, examId: products.examId, courseId: products.courseId, testId: products.testId, setId: products.setId })
 			.from(entitlements)
 			.innerJoin(products, eq(products.id, entitlements.productId))
 			.where(liveEntitlement(userId)),
 		db().select({ testId: testGrants.testId }).from(testGrants).where(eq(testGrants.userId, userId))
 	]);
-	const s = { examIds: new Set<string>(), courseIds: new Set<string>(), testIds: new Set(grants.map((g) => g.testId)) };
+	const s = { examIds: new Set<string>(), courseIds: new Set<string>(), testIds: new Set(grants.map((g) => g.testId)), setIds: new Set<string>() };
 	for (const r of rows) {
 		if (r.kind === 'exam_pass' && r.examId) s.examIds.add(r.examId);
 		if (r.kind === 'course' && r.courseId) s.courseIds.add(r.courseId);
 		if (r.kind === 'test' && r.testId) s.testIds.add(r.testId);
+		if (r.setId) s.setIds.add(r.setId);
 	}
 	return s;
 }

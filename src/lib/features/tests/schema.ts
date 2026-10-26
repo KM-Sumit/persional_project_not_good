@@ -21,6 +21,7 @@ export const testFields = z.object({
 	kind: testKindEnum.default('practice'),
 	access: testAccessEnum.default('open'),
 	examId: optUuid(),
+	setId: optUuid(),
 	courseId: optUuid(),
 	subjectId: optUuid(),
 	sessionId: optUuid(),
@@ -155,6 +156,11 @@ export type CatalogCard = {
 	kind: TestKind;
 	access: TestAccess;
 	examId: string | null;
+	setId: string | null;
+	setName: string | null;
+	setAccess: 'open' | 'password' | 'paid' | null;
+	setPriceInr: number | null;
+	setProductId: string | null;
 	subjectId: string | null;
 	difficulty: Difficulty;
 	durationMin: number;

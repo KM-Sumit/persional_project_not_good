@@ -4,15 +4,18 @@
 	import { ArrowDown, ArrowUp, BookMarked, ChevronRight, Pencil, Plus, Tags, Trash2 } from '@lucide/svelte';
 	import { EmptyState, PageHeader, Sheet } from '#lib/components/ui';
 	import ConfirmSheet from '#lib/components/kit/ConfirmSheet.svelte';
+	import FileUpload from '#lib/components/kit/FileUpload.svelte';
+	import type { FileDto } from '#lib/features/files/schema';
 	import { toasting } from '../students/_enhance';
 
 	let { data } = $props();
 	type Type = 'category' | 'exam' | 'subject';
-	type Item = { id: string; name: string; description?: string; enabled?: boolean };
+	type Item = { id: string; name: string; description?: string; enabled?: boolean; logoFileId?: string | null };
 
 	let sheet = $state(false);
 	let ctx = $state<{ list: Item[]; i: number; enabled?: boolean }>({ list: [], i: -1 });
 	let form = $state<{ type: Type; id: string; name: string; description: string; categoryId: string }>({ type: 'category', id: '', name: '', description: '', categoryId: '' });
+	let logo = $state<FileDto | null>(null);
 
 	let reorderForm = $state<HTMLFormElement>();
 	let reorder = $state({ type: 'category' as Type, categoryId: '', ids: '' });
@@ -27,6 +30,7 @@
 		const list: Item[] = type === 'category' ? data.tree.categories : type === 'subject' ? data.tree.subjects : (data.tree.categories.find((c) => c.id === categoryId)?.exams ?? []);
 		ctx = { list, i: item ? list.findIndex((x) => x.id === item.id) : -1, enabled: item?.enabled };
 		form = { type, id: item?.id ?? '', name: item?.name ?? '', description: item?.description ?? '', categoryId };
+		logo = type === 'category' && item?.logoFileId ? { id: item.logoFileId, name: `${item.name} logo`, url: `/api/files/${item.logoFileId}` } : null;
 		sheet = true;
 	}
 	async function move(type: Type, list: Item[], from: number, to: number, categoryId = '') {
@@ -72,6 +76,7 @@
 				<article class="card rise" style="--i: {Math.min(ci, 8)}">
 					<div class="card-head cat">
 						<button class="row-main" onclick={() => edit('category', c)} aria-label="Edit {c.name}">
+							{#if c.logoFileId}<img class="cat-logo" src="/api/files/{c.logoFileId}" alt="" />{/if}
 							<span class="grow min-w-0"><h2 class="truncate">{c.name}{#if !c.enabled} <span class="badge badge-closed phone-only">Hidden</span>{/if}</h2>{#if c.description}<p class="tiny muted truncate">{c.description}</p>{/if}</span>
 							<ChevronRight class="chev phone-only" />
 						</button>
@@ -121,6 +126,9 @@
 			{#if form.type !== 'subject'}
 				<div class="field"><label class="label" for="t-desc">Description (optional)</label><textarea id="t-desc" class="textarea" name="description" rows="2" maxlength="500">{form.description}</textarea></div>
 			{/if}
+			{#if form.type === 'category'}
+				<FileUpload accept="image" bind:value={logo} name="logoFileId" label="Logo" />
+			{/if}
 			<button class="btn btn-primary btn-block">{form.id ? 'Save' : 'Add'} {NOUN[form.type]}</button>
 		</form>
 		{#if form.id}
@@ -163,4 +171,5 @@
 	.row-actions { display: none; align-items: center; gap: .125rem; margin-left: auto; }
 	@media (min-width: 768px) { .row-actions { display: flex; } :global(.phone-only), .phone-only-flex { display: none !important; } }
 	.toggle { min-height: 32px; margin-right: .25rem; cursor: pointer; }
+	.cat-logo { width: 2.25rem; height: 2.25rem; object-fit: contain; border-radius: 0.6rem; background: #fff; flex-shrink: 0; }
 </style>

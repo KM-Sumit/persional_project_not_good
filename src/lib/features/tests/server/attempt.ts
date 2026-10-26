@@ -4,7 +4,7 @@ import { and, asc, count, desc, eq, inArray, lt, ne, sql, type SQL } from 'drizz
 import { db } from '#lib/server/db';
 import { accessScope, hasAccess } from '#lib/features/billing/server/service';
 import { courseAccess } from '#lib/features/billing/server/paywall';
-import { attemptAnswers, attempts, batchMembers, questions, testAccessFailures, testGrants, testQuestions, tests } from '#lib/server/db/schema';
+import { attemptAnswers, attempts, batchMembers, products, questions, testAccessFailures, testGrants, testQuestions, testSets, tests } from '#lib/server/db/schema';
 import { DomainError } from '#lib/server/http';
 import { cached, cacheKeys } from '#lib/server/cache';
 import { parse } from '../../bank/server/service';
@@ -56,11 +56,20 @@ type PublishedCard = Omit<CatalogCard, 'window' | 'maxAttempts' | 'attemptsUsed'
 
 const loadPublished = async (): Promise<PublishedCard[]> => {
 	const rows = await db()
-		.select({ t: tests, questionCount: questionCountSql, totalMarks: totalMarksSql })
+		.select({
+			t: tests,
+			setName: testSets.name,
+			setAccess: testSets.access,
+			setPriceInr: testSets.priceInr,
+			setProductId: sql<string | null>`(select ${products.id} from ${products} where ${products.setId} = ${testSets.id} and ${products.active} = true order by ${products.createdAt} desc limit 1)`,
+			questionCount: questionCountSql,
+			totalMarks: totalMarksSql
+		})
 		.from(tests)
+		.leftJoin(testSets, eq(testSets.id, tests.setId))
 		.where(eq(tests.status, 'published'))
 		.orderBy(desc(tests.createdAt));
-	return rows.map(({ t, questionCount, totalMarks }) => ({
+	return rows.map(({ t, setName, setAccess, setPriceInr, setProductId, questionCount, totalMarks }) => ({
 		id: t.id,
 		title: t.title,
 		description: t.description,
@@ -70,6 +79,11 @@ const loadPublished = async (): Promise<PublishedCard[]> => {
 		kind: t.kind,
 		access: t.access,
 		examId: t.examId,
+		setId: t.setId,
+		setName: setName ?? null,
+		setAccess: setAccess ?? null,
+		setPriceInr: setPriceInr ?? null,
+		setProductId: setProductId ?? null,
 		subjectId: t.subjectId,
 		courseId: t.courseId,
 		batchId: t.batchId,
@@ -114,14 +128,25 @@ async function personalise(cards: PublishedCard[], userId: string, now = new Dat
 		accessScope(userId) // exam passes, test products and manual grants
 	]);
 	const byTest = new Map(mine.map((m) => [m.testId, m]));
-	const unlocked = (c: { id: string; examId: string | null }) => grants.testIds.has(c.id) || (!!c.examId && grants.examIds.has(c.examId));
+	const unlocked = (c: { id: string; examId: string | null; setId: string | null }) =>
+		grants.testIds.has(c.id) || (!!c.setId && grants.setIds.has(c.setId)) || (!!c.examId && grants.examIds.has(c.examId));
 	return cards.map((c) => {
 		const m = byTest.get(c.id);
 		const window = windowState(c, now);
 		const maxAttempts = effectiveMaxAttempts(c.kind, c.maxAttemptsRaw);
 		const attemptsUsed = m?.used ?? 0;
 		const inProgressAttemptId = m?.open ?? null;
-		const lock = c.access === 'paid' && !unlocked(c) ? 'paid' : c.access === 'password' ? 'password' : null;
+		const lock = c.setId
+			? c.setAccess === 'paid' && !unlocked(c)
+				? 'paid'
+				: c.setAccess === 'password'
+					? 'password'
+					: null
+			: c.access === 'paid' && !unlocked(c)
+				? 'paid'
+				: c.access === 'password'
+					? 'password'
+					: null;
 		const { batchId: _b, maxAttemptsRaw: _m, instructions: _i, sourceInfo: _s, showSolutions: _sh, ...card } = c;
 		return {
 			...card,
@@ -242,9 +267,20 @@ export async function startAttempt(testId: string, userId: string, password?: st
 	const w = windowState(t, now);
 	if (w === 'upcoming') throw new DomainError(403, 'This test has not opened yet.');
 	if (w === 'ended') throw new DomainError(410, 'This test has ended.');
-	if (t.access === 'paid' && !(await hasAccess(userId, { examId: t.examId, testId })))
-		throw new DomainError(403, 'This is a paid test. Get the exam pass or ask the institute to unlock it.');
-	if (t.access === 'password') await checkPassword(t, userId, password, now);
+	if (t.setId) {
+		const [set] = await db().select().from(testSets).where(eq(testSets.id, t.setId)).limit(1);
+		if (set?.access === 'paid') {
+			const scope = await accessScope(userId);
+			const ok = scope.setIds.has(set.id) || scope.testIds.has(testId) || (!!set.examId && scope.examIds.has(set.examId));
+			if (!ok) throw new DomainError(403, 'This set is paid. One payment opens every test in it.');
+		} else if (set?.access === 'password') {
+			await checkPassword({ ...t, passwordHash: set.passwordHash }, userId, password, now);
+		}
+	} else {
+		if (t.access === 'paid' && !(await hasAccess(userId, { examId: t.examId, testId })))
+			throw new DomainError(403, 'This is a paid test. Get the exam pass or ask the institute to unlock it.');
+		if (t.access === 'password') await checkPassword(t, userId, password, now);
+	}
 
 	return db().transaction(async (tx) => {
 		// Serialise double-taps on Start so one student never gets two attempts.

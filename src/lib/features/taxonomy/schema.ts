@@ -10,16 +10,19 @@ const slug = z
 	.regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Use lowercase letters, numbers and dashes.')
 	.max(80);
 
+const logoFileId = z.preprocess((v) => (v === '' || v == null ? null : v), z.uuid().nullable());
 export const categoryInput = z.object({
 	name,
 	slug: slug.optional(),
 	description: z.string().trim().max(500).default(''),
+	logoFileId: logoFileId.optional(),
 	enabled: boolish.default(true)
 });
 export const categoryUpdate = z.object({
 	name: name.optional(),
 	slug: slug.optional(),
 	description: z.string().trim().max(500).optional(),
+	logoFileId: logoFileId.optional(),
 	enabled: boolish.optional()
 });
 export const examInput = categoryInput.extend({ categoryId: z.uuid() });
@@ -36,5 +39,5 @@ export type ExamDTO = {
 	sortOrder: number;
 	enabled: boolean;
 };
-export type CategoryDTO = Omit<ExamDTO, 'categoryId'> & { exams: ExamDTO[] };
+export type CategoryDTO = Omit<ExamDTO, 'categoryId'> & { logoFileId: string | null; exams: ExamDTO[] };
 export type TaxonomyTree = { categories: CategoryDTO[]; subjects: SubjectDTO[] };

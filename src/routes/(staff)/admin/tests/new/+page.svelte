@@ -1,14 +1,17 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import { goto } from '$app/navigation';
+	import { untrack } from 'svelte';
 	import {
 		BookOpenCheck,
 		CalendarClock,
 		Check,
 		CircleAlert,
 		ClipboardCopy,
+		ClipboardList,
 		FileUp,
 		IndianRupee,
+		Layers,
 		Library,
 		Lock,
 		LockOpen,
@@ -30,9 +33,18 @@
 
 	let { data } = $props();
 
-	const STEPS = ['Section', 'Details', 'Questions', 'Review'] as const;
-	let step = $state(0);
-	let categoryId = $state<string | null>(null);
+	const STEPS = ['Section', 'Format', 'Details', 'Questions', 'Review'] as const;
+	const preset = untrack(() => data.existingSet);
+	const presetCategory = untrack(() =>
+		preset?.examId ? (data.taxonomy.categories.find((c) => c.exams.some((e) => e.id === preset?.examId))?.id ?? null) : null
+	);
+	let step = $state(preset ? 2 : 0);
+	let categoryId = $state<string | null>(presetCategory);
+	let mode = $state<'single' | 'set'>(preset ? 'set' : 'single');
+	let setName = $state(preset?.name ?? '');
+	let setAccess = $state<TestAccess>('open');
+	let setPrice = $state<number | null>(null);
+	let setPassword = $state('');
 
 	// ---------- step 1 + 2: the test ----------
 	const currentSessionId = () => data.sessions.find((s) => s.isCurrent)?.id ?? null;
@@ -42,7 +54,7 @@
 		title: '',
 		description: '',
 		instructions: '',
-		examId: null as string | null,
+		examId: (preset?.examId ?? null) as string | null,
 		subjectId: null as string | null,
 		sessionId: currentSessionId() as string | null,
 		batchId: null as string | null,
@@ -78,7 +90,7 @@
 
 	function pickKind(k: TestKind) {
 		f.kind = k;
-		if (k === 'live' && f.access === 'open') f.access = 'password';
+		if (mode !== 'set' && k === 'live' && f.access === 'open') f.access = 'password';
 		if (k === 'pyq' && f.marksPerQuestion === 1) (f.marksPerQuestion = 2), (f.negativeMarks = 0.5);
 	}
 
@@ -132,6 +144,90 @@
 	const fromModules = $derived(blueprint.reduce((s, r) => s + Math.min(r.count, available(r)), 0));
 	const total = $derived(fromModules + picked.length + drafts.length + Math.max(0, importRows));
 
+	type Paper = {
+		key: string;
+		f: typeof f;
+		source: typeof source;
+		blueprint: Row[];
+		picked: QuestionDTO[];
+		drafts: typeof drafts;
+		importText: string;
+	};
+	let papers = $state<Paper[]>([]);
+	let active = $state(0);
+	function livePaper(key = papers[active]?.key ?? 'live'): Paper {
+		return { key, f: $state.snapshot(f), source, blueprint: $state.snapshot(blueprint), picked: $state.snapshot(picked), drafts: $state.snapshot(drafts), importText };
+	}
+	function countOf(p: Paper) {
+		const t = p.importText.trim();
+		let rows = 0;
+		if (t) {
+			if (/^[[{]/.test(t)) {
+				try {
+					const v = JSON.parse(t);
+					rows = (Array.isArray(v) ? v : (v?.questions ?? [])).length;
+				} catch {
+					rows = -1;
+				}
+			} else rows = Math.max(0, t.split(/\r?\n/).filter((l) => l.trim()).length - 1);
+		}
+		const fromBank = p.blueprint.reduce((s, r) => {
+			const m = r.moduleId ? moduleById.get(r.moduleId) : undefined;
+			const avail = m ? (r.difficulty ? m.counts[r.difficulty] : m.questionCount) : 0;
+			return s + Math.min(r.count, avail);
+		}, 0);
+		return { questions: fromBank + p.picked.length + p.drafts.length + Math.max(0, rows), badImport: rows < 0 };
+	}
+	const allPapers = $derived.by(() => {
+		const live = livePaper();
+		if (mode !== 'set') return [live];
+		if (!papers.length) return [live];
+		return papers.map((p, i) => (i === active ? live : p));
+	});
+	function applyPaper(p: Paper) {
+		f = $state.snapshot(p.f);
+		source = p.source;
+		blueprint = $state.snapshot(p.blueprint);
+		picked = $state.snapshot(p.picked);
+		drafts = $state.snapshot(p.drafts);
+		importText = p.importText;
+	}
+	function stash() {
+		if (mode !== 'set') return;
+		const snap = livePaper(papers[active]?.key ?? crypto.randomUUID());
+		if (!papers[active]) papers = [snap];
+		else papers[active] = snap;
+	}
+	function pickMode(nextMode: 'single' | 'set') {
+		mode = nextMode;
+		if (nextMode === 'set') {
+			if (!setName.trim()) setName = `${chosenExam?.name ?? 'Exam'} set`;
+			if (!papers.length) papers = [livePaper(crypto.randomUUID())];
+		}
+	}
+	function openPaper(i: number) {
+		if (i === active) return;
+		stash();
+		active = i;
+		applyPaper(papers[i]!);
+	}
+	function addPaper() {
+		stash();
+		const base = $state.snapshot(f);
+		const p: Paper = {
+			key: crypto.randomUUID(),
+			f: { ...base, title: '', description: '', instructions: '', password: '' },
+			source: 'manual',
+			blueprint: [],
+			picked: [],
+			drafts: [],
+			importText: ''
+		};
+		papers.push(p);
+		active = papers.length - 1;
+		applyPaper(p);
+	}
+
 	// Bank search for "pick questions".
 	let q = $state('');
 	let qModule = $state<string | null>(null);
@@ -167,18 +263,28 @@
 	const issues = $derived.by(() => {
 		const out: Issue[] = [];
 		if (!f.examId) out.push({ step: 0, text: 'Choose a section and an exam.', blocksDraft: true });
-		if (!f.title.trim()) out.push({ step: 1, text: 'Give the test a title.', blocksDraft: true });
-		if (f.kind === 'live' && !f.startsAt) out.push({ step: 1, text: 'A live test needs a start time.', blocksDraft: true });
-		if (f.kind === 'live' && f.startsAt && new Date(f.startsAt) <= new Date()) out.push({ step: 1, text: 'The start time is in the past.' });
-		if (f.startsAt && f.endsAt && f.endsAt <= f.startsAt) out.push({ step: 1, text: 'The end time must be after the start time.', blocksDraft: true });
-		if (f.access === 'password' && f.password && f.password.length < 4) out.push({ step: 1, text: 'The password needs at least 4 characters.', blocksDraft: true });
-		if (f.access === 'paid' && !f.priceInr) out.push({ step: 1, text: 'Set a price for a paid test.' });
-		if (f.kind === 'pyq' && !f.year) out.push({ step: 1, text: 'Add the PYQ year.' });
-		if (!f.durationMin || f.durationMin < 1) out.push({ step: 1, text: 'Set a duration.', blocksDraft: true });
-		if (!total) out.push({ step: 2, text: 'Add at least one question.' });
-		if (importRows < 0) out.push({ step: 2, text: 'The pasted import is not valid JSON.', blocksDraft: true });
-		for (const r of blueprint)
-			if (r.count > available(r)) out.push({ step: 2, text: `${(r.moduleId ? moduleById.get(r.moduleId) : undefined)?.name || 'A module'} has only ${available(r)} matching questions.` });
+		if (mode === 'set' && !setName.trim()) out.push({ step: 1, text: 'Give the set a name.', blocksDraft: true });
+		if (mode === 'set' && setAccess === 'paid' && !(Number(setPrice) > 0)) out.push({ step: 1, text: 'Enter one price for this set.', blocksDraft: true });
+		if (mode === 'set' && setAccess === 'password' && setPassword && setPassword.length < 4)
+			out.push({ step: 1, text: 'The set password needs at least 4 characters.', blocksDraft: true });
+		allPapers.forEach((p, i) => {
+			const who = mode === 'set' ? `Test ${i + 1}${p.f.title.trim() ? ` (${p.f.title.trim()})` : ''}` : 'This test';
+			if (!p.f.title.trim()) out.push({ step: 2, text: mode === 'set' ? `Test ${i + 1} needs a title.` : 'Give the test a title.', blocksDraft: true });
+			if (p.f.kind === 'live' && !p.f.startsAt) out.push({ step: 2, text: `${who} needs a start time.`, blocksDraft: true });
+			if (p.f.kind === 'live' && p.f.startsAt && new Date(p.f.startsAt) <= new Date()) out.push({ step: 2, text: `${who}: the start time is in the past.` });
+			if (p.f.startsAt && p.f.endsAt && p.f.endsAt <= p.f.startsAt) out.push({ step: 2, text: `${who}: the end time must be after the start time.`, blocksDraft: true });
+			if (mode !== 'set' && p.f.access === 'password' && p.f.password && p.f.password.length < 4)
+				out.push({ step: 2, text: `${who}: the password needs at least 4 characters.`, blocksDraft: true });
+			if (mode !== 'set' && p.f.access === 'paid' && !p.f.priceInr) out.push({ step: 2, text: `${who}: set a price for a paid test.` });
+			if (p.f.kind === 'pyq' && !p.f.year) out.push({ step: 2, text: `${who}: add the PYQ year.` });
+			if (!p.f.durationMin || p.f.durationMin < 1) out.push({ step: 2, text: `${who}: set a duration.`, blocksDraft: true });
+			const n = countOf(p);
+			if (!n.questions) out.push({ step: 3, text: `${who} needs at least one question.` });
+			if (n.badImport) out.push({ step: 3, text: `${who}: the pasted import is not valid JSON.`, blocksDraft: true });
+			for (const r of p.blueprint)
+				if (r.count > (r.moduleId ? (moduleById.get(r.moduleId) ? (r.difficulty ? moduleById.get(r.moduleId)!.counts[r.difficulty] : moduleById.get(r.moduleId)!.questionCount) : 0) : 0))
+					out.push({ step: 3, text: `${who}: a module does not have enough matching questions.` });
+		});
 		return out;
 	});
 	const canDraft = $derived(!issues.some((i) => i.blocksDraft));
@@ -186,34 +292,48 @@
 
 	const plan = $derived(
 		JSON.stringify({
-			fields: {
-				...f,
-				password: f.access === 'password' ? f.password || null : null,
-				priceInr: f.access === 'paid' ? f.priceInr : null,
-				startsAt: f.startsAt,
-				endsAt: f.endsAt,
-				year: f.kind === 'pyq' ? f.year : null,
-				shift: f.kind === 'pyq' ? f.shift : null,
-				sourceInfo: f.kind === 'pyq' ? f.sourceInfo : '',
-				verifiedPyq: f.kind === 'pyq' && f.verifiedPyq
-			},
-			blueprint: blueprint.filter((r) => r.moduleId).map((r) => ({ moduleId: r.moduleId, count: r.count, difficulty: r.difficulty || undefined })),
-			questionIds: picked.map((p) => p.id),
-			newQuestions: drafts,
-			importText,
-			publish: false
+			mode,
+			setName: setName.trim(),
+			setId: data.existingSet?.id ?? null,
+			setAccess: mode === 'set' ? setAccess : 'open',
+			setPrice: mode === 'set' && setAccess === 'paid' ? Number(setPrice) || null : null,
+			setPassword: mode === 'set' && setAccess === 'password' ? setPassword.trim() || null : null,
+			publish: false,
+			tests: allPapers.map((p) => ({
+				fields: {
+					...p.f,
+					access: mode === 'set' ? 'open' : p.f.access,
+					password: mode === 'set' ? null : p.f.access === 'password' ? p.f.password || null : null,
+					priceInr: mode === 'set' ? null : p.f.access === 'paid' ? p.f.priceInr : null,
+					year: p.f.kind === 'pyq' ? p.f.year : null,
+					shift: p.f.kind === 'pyq' ? p.f.shift : null,
+					sourceInfo: p.f.kind === 'pyq' ? p.f.sourceInfo : '',
+					verifiedPyq: p.f.kind === 'pyq' && p.f.verifiedPyq
+				},
+				blueprint: p.blueprint.filter((r) => r.moduleId).map((r) => ({ moduleId: r.moduleId, count: r.count, difficulty: r.difficulty || undefined })),
+				questionIds: p.picked.map((q) => q.id),
+				newQuestions: p.drafts,
+				importText: p.importText
+			}))
 		})
 	);
 
 	let busy = $state<'draft' | 'publish' | null>(null);
-	let created = $state<{ id: string; password: string | null; published: boolean; warnings: string[] } | null>(null);
+	let created = $state<{ id: string; setId: string | null; password: string | null; passwords: { title: string; password: string }[]; published: boolean; warnings: string[] } | null>(null);
 	let pwOpen = $state(false);
 
 	async function copy(text: string) {
 		await navigator.clipboard.writeText(text).catch(() => {});
 		toast('Copied');
 	}
-	const next = () => (step = Math.min(3, step + 1));
+	const next = () => {
+		if (step === 1 && mode === 'set' && (!setName.trim() || (setAccess === 'paid' && !(Number(setPrice) > 0)))) return;
+		if (step === 1 && mode === 'set') {
+			if (!papers.length) papers = [livePaper(crypto.randomUUID())];
+			else stash();
+		}
+		step = Math.min(4, step + 1);
+	};
 </script>
 
 <svelte:head><title>New test · UCI staff</title></svelte:head>
@@ -267,6 +387,54 @@
 	{:else if step === 1}
 		<section class="stack rise">
 			<p class="small">For <strong>{category?.name}</strong> · <strong>{chosenExam?.name}</strong>. <button type="button" class="underline" onclick={() => (step = 0)}>Change</button></p>
+			<h2 class="section-title">Single test or a set of tests?</h2>
+			<div class="choices" role="radiogroup" aria-label="How many tests">
+				<button type="button" role="radio" aria-checked={mode === 'single'} class="choice card" onclick={() => pickMode('single')}>
+					<ClipboardList class="size-5" />
+					<span class="font-semibold">Single test</span>
+					<span class="small muted">One test, then its details and questions.</span>
+				</button>
+				<button type="button" role="radio" aria-checked={mode === 'set'} class="choice card" onclick={() => pickMode('set')}>
+					<Layers class="size-5" />
+					<span class="font-semibold">Set of tests</span>
+					<span class="small muted">A named set. Opening it shows every test inside.</span>
+				</button>
+			</div>
+			{#if mode === 'set'}
+				<div class="field">
+					<label class="label" for="set-name">Set name</label>
+					<input id="set-name" class="input" maxlength="120" bind:value={setName} placeholder={chosenExam ? `${chosenExam.name} set` : 'Set name'} />
+					<p class="help">You can change this name now, and again after the set is saved.</p>
+				</div>
+				<h2 class="section-title">Who can open this set?</h2>
+				<p class="small muted">This applies once to the folder. Tests inside are not paid separately.</p>
+				<div class="choices choices-3" role="radiogroup" aria-label="Set access">
+					{#each accesses as a (a.value)}
+						<button type="button" role="radio" aria-checked={setAccess === a.value} class="choice card" onclick={() => (setAccess = a.value)}>
+							<a.icon class="size-5" />
+							<span class="font-semibold">{a.title === 'Open' ? 'Free' : a.title}</span>
+							<span class="small muted">{a.value === 'open' ? 'Anyone signed in can start every test.' : a.value === 'password' ? 'One password opens the whole set.' : 'One payment opens every test in the set.'}</span>
+						</button>
+					{/each}
+				</div>
+				{#if setAccess === 'password'}
+					<div class="field">
+						<label class="label" for="set-pw">Set password <span class="opt">(leave empty to generate one)</span></label>
+						<input id="set-pw" class="input font-mono" maxlength="64" autocomplete="off" bind:value={setPassword} />
+					</div>
+				{:else if setAccess === 'paid'}
+					<div class="field">
+						<label class="label" for="set-price">Price (₹)</label>
+						<input id="set-price" type="number" min="1" class="input" inputmode="numeric" bind:value={setPrice} />
+						<p class="help">Students pay this once. Every test in the set unlocks together.</p>
+					</div>
+				{/if}
+			{/if}
+		</section>
+	{:else if step === 2}
+		{@render setBar()}
+		<section class="stack rise">
+			<p class="small">For <strong>{category?.name}</strong> · <strong>{chosenExam?.name}</strong>. <button type="button" class="underline" onclick={() => (step = 0)}>Change</button></p>
 			<h2 class="section-title">What kind of test?</h2>
 			<div class="choices" role="radiogroup" aria-label="Test type">
 				{#each kinds as k (k.value)}
@@ -277,16 +445,18 @@
 					</button>
 				{/each}
 			</div>
-			<h2 class="section-title mt-2">Who can take it?</h2>
-			<div class="choices choices-3" role="radiogroup" aria-label="Access">
-				{#each accesses as a (a.value)}
-					<button type="button" role="radio" aria-checked={f.access === a.value} class="choice card" onclick={() => (f.access = a.value)}>
-						<a.icon class="size-5" />
-						<span class="font-semibold">{a.title}</span>
-						<span class="small muted">{a.body}</span>
-					</button>
-				{/each}
-			</div>
+			{#if mode !== 'set'}
+				<h2 class="section-title mt-2">Who can take it?</h2>
+				<div class="choices choices-3" role="radiogroup" aria-label="Access">
+					{#each accesses as a (a.value)}
+						<button type="button" role="radio" aria-checked={f.access === a.value} class="choice card" onclick={() => (f.access = a.value)}>
+							<a.icon class="size-5" />
+							<span class="font-semibold">{a.title}</span>
+							<span class="small muted">{a.body}</span>
+						</button>
+					{/each}
+				</div>
+			{/if}
 		</section>
 		<section class="card card-pad stack rise">
 			<div class="field">
@@ -367,7 +537,7 @@
 				<Switch bind:checked={f.verifiedPyq} label="Verified authentic paper" description="Shows a Verified badge to students." />
 			{/if}
 
-			{#if f.access === 'password'}
+			{#if mode !== 'set' && f.access === 'password'}
 				<div class="field">
 					<label class="label" for="w-pw">Password <span class="opt">(leave empty to generate one)</span></label>
 					<input id="w-pw" class="input font-mono" maxlength="64" autocomplete="off" bind:value={f.password} />
@@ -418,7 +588,8 @@
 				</div>
 			</details>
 		</section>
-	{:else if step === 2}
+	{:else if step === 3}
+		{@render setBar()}
 		<section class="stack rise">
 			<p class="small muted">How should the questions for {chosenExam?.name ?? 'this exam'} be added?</p>
 			<div class="choices choices-3" role="radiogroup" aria-label="How to add questions">
@@ -514,10 +685,24 @@
 		</section>
 	{:else}
 		<section class="stack rise">
+			{#if mode === 'set'}
+				<div class="field">
+					<label class="label" for="set-name-review">Set name</label>
+					<input id="set-name-review" class="input" maxlength="120" bind:value={setName} />
+				</div>
+				<ul class="stack-sm">
+					{#each allPapers as p, i (p.key)}
+						<li class="card card-pad flex items-center justify-between gap-3">
+							<span class="font-semibold">{p.f.title || `Test ${i + 1}`}</span>
+							<span class="small font-mono tabular">{countOf(p).questions} questions</span>
+						</li>
+					{/each}
+				</ul>
+			{/if}
 			<div class="card card-pad review">
 				<div>
-					<p class="eyebrow">{kindLabel[f.kind]} · {accessLabel[f.access]}</p>
-					<h2 class="section-title">{f.title || 'Untitled test'}</h2>
+					<p class="eyebrow">{mode === 'set' ? `${setName || 'Test set'} · ${setAccess === 'open' ? 'Free' : setAccess === 'paid' ? `Paid ₹${setPrice || '—'}` : 'Password'}` : `${kindLabel[f.kind]} · ${accessLabel[f.access]}`}</p>
+					<h2 class="section-title">{mode === 'set' ? `${allPapers.length} tests` : f.title || 'Untitled test'}</h2>
 				</div>
 				<dl class="facts">
 					<div><dt>Questions</dt><dd class="font-mono tabular">{total}</dd></div>
@@ -530,7 +715,7 @@
 				<div class="card card-pad stack-sm" role="alert">
 					<h3 class="font-semibold">Fix before publishing</h3>
 					<ul class="stack-sm">
-						{#each issues as it (it.text)}
+						{#each issues as it, i (i)}
 							<li class="issue">
 								<CircleAlert class="size-4 text-danger" />
 								<span class="flex-1 small">{it.text}</span>
@@ -562,14 +747,14 @@
 			for (const w of created!.warnings) toast(w, 'warning', 7000);
 			toast(created!.published ? 'Test published' : 'Draft saved');
 			if (created!.password) pwOpen = true;
-			else goto(`/admin/tests/${created!.id}`);
+			else goto(created!.setId ? `/admin/tests/sets/${created!.setId}` : `/admin/tests/${created!.id}`);
 		};
 	}}
 >
 	<div class="actionbar-inner">
 		{#if step > 0}<Button variant="ghost" class="btn-fixed" type="button" onclick={() => (step -= 1)}>Back</Button>{/if}
-		{#if step < 3}
-			<Button type="button" onclick={next} disabled={step === 0 && !f.examId}>Next: {STEPS[step + 1]}</Button>
+		{#if step < 4}
+			<Button type="button" onclick={next} disabled={(step === 0 && !f.examId) || (step === 1 && mode === 'set' && (!setName.trim() || (setAccess === 'paid' && !(Number(setPrice) > 0))))}>Next: {STEPS[step + 1]}</Button>
 		{:else}
 			<Button variant="secondary" type="submit" name="intent" value="draft" loading={busy === 'draft'} disabled={!canDraft || !!busy}>Save draft</Button>
 			<Button type="submit" name="intent" value="publish" loading={busy === 'publish'} disabled={!canPublish || !!busy}>Publish test</Button>
@@ -579,7 +764,7 @@
 
 <QuestionEditor bind:open={writing} action="" title="Write a question" submitLabel="Add to test" onlocal={(d) => drafts.push(d)} />
 
-<Sheet bind:open={pwOpen} title="Test password" description="Copy it now. It is shown only once; you can set a new one from the test's Access page.">
+<Sheet bind:open={pwOpen} title={mode === 'set' ? 'Set password' : 'Test password'} description="Copy it now. It is shown only once. One password opens every test in the set.">
 	{#if created?.password}
 		<div class="stack">
 			<p class="pw font-mono">{created.password}</p>
@@ -587,11 +772,25 @@
 				<Button variant="secondary" onclick={() => copy(created!.password!)}><ClipboardCopy class="size-4" />Copy password</Button>
 				<a class="btn btn-secondary" href="https://wa.me/?text={encodeURIComponent(`${f.title}: password ${created.password}`)}" target="_blank" rel="noopener">Send on WhatsApp</a>
 				<span class="flex-1"></span>
-				<Button onclick={() => goto(`/admin/tests/${created!.id}`)}>Open test</Button>
+				<Button onclick={() => goto(created!.setId ? `/admin/tests/sets/${created!.setId}` : `/admin/tests/${created!.id}`)}>{created!.setId ? 'Open set' : 'Open test'}</Button>
 			</div>
 		</div>
 	{/if}
 </Sheet>
+
+{#snippet setBar()}
+	{#if mode === 'set'}
+		<div class="set-bar card card-pad stack">
+			<p class="small">Set: <strong>{setName}</strong>. Add each test, then open one to edit its details and questions.</p>
+			<div class="set-tests">
+				{#each allPapers as p, i (p.key)}
+					<button type="button" class="chip" aria-current={i === active} onclick={() => openPaper(i)}>{p.f.title.trim() || `Test ${i + 1}`}</button>
+				{/each}
+				<button type="button" class="btn btn-secondary btn-sm" onclick={addPaper}><Plus class="size-4" />Add test</button>
+			</div>
+		</div>
+	{/if}
+{/snippet}
 
 <style>
 	.wizard {
@@ -599,7 +798,7 @@
 	}
 	.stepper {
 		display: grid;
-		grid-template-columns: repeat(4, minmax(0, 1fr));
+		grid-template-columns: repeat(5, minmax(0, 1fr));
 		gap: 0.25rem;
 		list-style: none;
 		padding: 0;
@@ -647,10 +846,11 @@
 			display: inline;
 		}
 		.stepper {
-			grid-template-columns: auto auto auto auto;
+			grid-template-columns: auto auto auto auto auto;
 			justify-content: start;
 		}
 	}
+	.set-tests { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
 	.choices {
 		display: grid;
 		gap: 0.75rem;
@@ -723,47 +923,6 @@
 		.bp-mod {
 			grid-column: auto;
 		}
-	}
-	.search {
-		position: relative;
-		min-width: 12rem;
-	}
-	.search :global(svg) {
-		position: absolute;
-		left: 0.75rem;
-		top: 50%;
-		translate: 0 -50%;
-		color: hsl(var(--muted-foreground));
-	}
-	.search .input {
-		padding-left: 2.25rem;
-	}
-	.pick-list {
-		display: grid;
-		gap: 0.375rem;
-		list-style: none;
-		padding: 0;
-		max-height: 60vh;
-		overflow-y: auto;
-	}
-	.pick-row {
-		display: flex;
-		gap: 0.75rem;
-		padding: 0.75rem;
-		border: 1px solid hsl(var(--border));
-		border-radius: 12px;
-		cursor: pointer;
-	}
-	.pick-row.is-on {
-		border-color: hsl(var(--primary) / 0.5);
-		background: hsl(var(--accent));
-	}
-	.pick-row input {
-		margin-top: 0.25rem;
-		accent-color: hsl(var(--primary));
-		width: 1.125rem;
-		height: 1.125rem;
-		flex-shrink: 0;
 	}
 	.draft {
 		display: flex;

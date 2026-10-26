@@ -1,7 +1,7 @@
 // Staff side of tests: CRUD, lifecycle, password, grants, questions, build-from-modules, listing, results.
 import { and, asc, count, desc, eq, ilike, inArray, isNull, notInArray, sql, type SQL } from 'drizzle-orm';
 import { db } from '#lib/server/db';
-import { attempts, modules, questions, testAccessFailures, testGrants, testQuestions, tests, users } from '#lib/server/db/schema';
+import { attempts, modules, products, questions, testAccessFailures, testGrants, testQuestions, testSets, tests, users } from '#lib/server/db/schema';
 import { DomainError } from '#lib/server/http';
 import { cacheKeys, invalidate } from '#lib/server/cache';
 import { createQuestion, escapeLike, parse } from '../../bank/server/service';
@@ -105,6 +105,67 @@ function normaliseWindow(t: { kind: string; startsAt: Date | null; endsAt: Date 
 }
 
 const hashPassword = (p: string) => Bun.password.hash(p);
+
+export async function createTestSet(name: string, examId: string | null) {
+	const title = name.trim();
+	if (!title || title.length > 120) throw new DomainError(400, 'Give the set a name.');
+	const [row] = await db().insert(testSets).values({ name: title, examId }).returning({ id: testSets.id });
+	return row!;
+}
+
+/** One gate for the whole set. Tests inside stay open. Returns a new password only when one was just created. */
+export async function saveSetGate(
+	id: string,
+	gate: { access: 'open' | 'password' | 'paid'; priceInr: number | null; password: string | null }
+) {
+	const [cur] = await db().select({ id: testSets.id, passwordHash: testSets.passwordHash }).from(testSets).where(eq(testSets.id, id)).limit(1);
+	if (!cur) throw new DomainError(404, 'Set not found.');
+	let plain: string | null = null;
+	let passwordHash: string | null = null;
+	if (gate.access === 'password') {
+		const typed = gate.password?.trim() ?? '';
+		if (typed && typed.length < 4) throw new DomainError(400, 'Password needs at least 4 characters.');
+		if (typed) {
+			plain = typed;
+			passwordHash = await hashPassword(typed);
+		} else if (cur.passwordHash) {
+			passwordHash = cur.passwordHash;
+		} else {
+			plain = generatePassword();
+			passwordHash = await hashPassword(plain);
+		}
+	}
+	const price = gate.access === 'paid' ? gate.priceInr : null;
+	if (gate.access === 'paid' && (!price || price < 1)) throw new DomainError(400, 'Enter a price for this set.');
+	await db().update(testSets).set({ access: gate.access, priceInr: price, passwordHash }).where(eq(testSets.id, id));
+	await bust();
+	return plain;
+}
+
+/** One product unlocks every test in the set. */
+export async function ensureSetProduct(setId: string, title: string, priceInr: number, testId: string, active: boolean) {
+	const [existing] = await db().select({ id: products.id }).from(products).where(eq(products.setId, setId)).limit(1);
+	if (existing) {
+		await db().update(products).set({ title, priceInr, testId, active }).where(eq(products.id, existing.id));
+	} else {
+		await db().insert(products).values({ kind: 'test', title, priceInr, testId, setId, active });
+	}
+	await bust();
+}
+
+export async function renameTestSet(id: string, name: string) {
+	const title = name.trim();
+	if (!title || title.length > 120) throw new DomainError(400, 'Give the set a name.');
+	const [row] = await db().update(testSets).set({ name: title }).where(eq(testSets.id, id)).returning({ id: testSets.id });
+	if (!row) throw new DomainError(404, 'Set not found.');
+}
+
+export async function getTestSet(id: string) {
+	const [set] = await db().select().from(testSets).where(eq(testSets.id, id)).limit(1);
+	if (!set) throw new DomainError(404, 'Set not found.');
+	const rows = await db().select(testSelect).from(tests).where(eq(tests.setId, id)).orderBy(asc(tests.createdAt));
+	return { id: set.id, name: set.name, examId: set.examId, tests: rows.map(toTestDTO) };
+}
 
 export async function createTest(input: unknown, actorId: string | null): Promise<TestSaved> {
 	const { password: custom, startsAt, endsAt, ...data } = parse(testCreate, input);

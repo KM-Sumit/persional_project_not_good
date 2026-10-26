@@ -51,6 +51,7 @@ export const tree = () =>
 				name: c.name,
 				slug: c.slug,
 				description: c.description,
+				logoFileId: c.logoFileId,
 				sortOrder: c.sortOrder,
 				enabled: c.enabled,
 				exams: ex.filter((e) => e.categoryId === c.id).map(toExam)

@@ -13,7 +13,7 @@ export const actions: Actions = {
 		requireStaff(event);
 		const d = await event.request.formData();
 		const id = str(d, 'id');
-		const input = { name: str(d, 'name'), description: str(d, 'description') };
+		const input = { name: str(d, 'name'), description: str(d, 'description'), logoFileId: str(d, 'logoFileId') || null };
 		return act(() => (id ? tx.updateCategory(id, input) : tx.createCategory(input)), id ? 'Category saved' : 'Category added');
 	},
 	saveExam: async (event) => {

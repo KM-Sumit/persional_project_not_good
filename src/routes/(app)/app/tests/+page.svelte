@@ -5,6 +5,8 @@
 		ChevronLeft,
 		ChevronRight,
 		ClipboardList,
+		Layers,
+		Lock,
 		FileText,
 		Landmark,
 		ListChecks,
@@ -73,6 +75,34 @@
 		for (const [k, v] of Object.entries(p)) sp.set(k, v);
 		return `?${sp}`;
 	};
+	const openSet = $derived(page.url.searchParams.get('set'));
+	const setGroups = $derived.by(() => {
+		const map = new Map<string, { id: string; name: string; tests: CatalogCard[] }>();
+		for (const c of shown) {
+			if (!c.setId) continue;
+			const g = map.get(c.setId) ?? { id: c.setId, name: c.setName || 'Test set', tests: [] };
+			g.tests.push(c);
+			map.set(c.setId, g);
+		}
+		return [...map.values()];
+	});
+	const loose = $derived(shown.filter((c) => !c.setId));
+	const inside = $derived(openSet ? shown.filter((c) => c.setId === openSet) : []);
+	const openSetName = $derived(setGroups.find((g) => g.id === openSet)?.name ?? 'Test set');
+	const setGate = $derived(inside[0] ?? null);
+	const setLocked = $derived(inside.some((t) => t.lock === 'paid'));
+	const setBlurb = (tests: CatalogCard[]) => {
+		const n = `${tests.length} ${tests.length === 1 ? 'test' : 'tests'}`;
+		const head = tests[0];
+		if (head?.setAccess === 'paid') return `${n} · ₹${head.setPriceInr ?? ''} once`;
+		if (head?.setAccess === 'password') return `${n} · one password`;
+		return `${n} · free`;
+	};
+	const testsHome = $derived.by(() => {
+		const sp = new URLSearchParams(page.url.search);
+		sp.delete('set');
+		return `?${sp}`;
+	});
 	const startHref = (c: CatalogCard) =>
 		c.inProgressAttemptId ? `/app/tests/${c.id}/attempt/${c.inProgressAttemptId}` : `/app/tests/${c.id}`;
 </script>
@@ -90,7 +120,11 @@
 		<nav class="cats" aria-label="Exam categories">
 			{#each tiles as t (t.slug)}
 				<a class="cat" href="?cat={t.slug}" style:--tone={t.tone} style:--wash={t.wash}>
-					<span class="mark"><t.icon strokeWidth={1.75} /></span>
+					{#if t.logoFileId}
+						<img class="logo" src="/api/files/{t.logoFileId}" alt="" />
+					{:else}
+						<span class="mark"><t.icon strokeWidth={1.75} /></span>
+					{/if}
 					<span class="copy">
 						<span class="name">{t.title}</span>
 						<span class="blurb">{t.blurb}</span>
@@ -102,7 +136,11 @@
 	{:else if !paper}
 		<a class="back-link" href="/app/tests" data-back><ChevronLeft />Tests</a>
 		<header class="hub-head">
-			<span class="hero-mark" style:--tone={picked.tone} style:--wash={picked.wash}><picked.icon strokeWidth={1.75} /></span>
+			{#if picked.logoFileId}
+				<img class="logo hero" src="/api/files/{picked.logoFileId}" alt="" />
+			{:else}
+				<span class="hero-mark" style:--tone={picked.tone} style:--wash={picked.wash}><picked.icon strokeWidth={1.75} /></span>
+			{/if}
 			<div>
 				<h1 class="page-title">{picked.title}</h1>
 				<p class="page-sub">{picked.blurb}</p>
@@ -169,19 +207,66 @@
 				<h2 class="section-title">{kind === 'practice' ? 'Topic-wise tests' : kind === 'sectional' ? 'Sectional tests' : 'Latest Mock Tests'}</h2>
 				{#if kind !== 'mock'}<a class="section-link" href={href({ view: 'tests', kind: 'mock' })}>Mocks</a>{/if}
 			</div>
-			{#if shown.length}
-				<div class="papers">
-					{#each shown as t (t.id)}
-						<article class="paper">
-							<span class="mark mini"><ClipboardList strokeWidth={1.75} /></span>
-							<div class="copy">
-								<p class="name">{t.title}</p>
-								<p class="blurb">{t.questionCount} questions · {t.durationMin} min{t.language ? ` · ${t.language}` : ''}</p>
-							</div>
-							<a class="btn btn-primary start" href={startHref(t)}>{t.inProgressAttemptId ? 'Resume' : 'Start Test'}</a>
-						</article>
-					{/each}
-				</div>
+			{#if openSet}
+				<a class="back-link" href={testsHome} data-back><ChevronLeft />{paper.name}</a>
+				<h2 class="section-title">{openSetName}</h2>
+				{#if setLocked}
+					<div class="card card-pad flex items-center justify-between gap-3">
+						<p class="small">One payment opens every test in this set{#if setGate?.setPriceInr}. Price <b class="font-mono">₹{setGate.setPriceInr}</b>{/if}.</p>
+						{#if setGate?.setProductId}
+							<a class="btn btn-primary" href="/app/checkout?product={setGate.setProductId}"><Lock class="size-4" /> Unlock set</a>
+						{/if}
+					</div>
+				{/if}
+				{#if inside.length}
+					<div class="papers">
+						{#each inside as t (t.id)}
+							<article class="paper">
+								<span class="mark mini"><ClipboardList strokeWidth={1.75} /></span>
+								<div class="copy">
+									<p class="name">{t.title}</p>
+									<p class="blurb">{t.questionCount} questions · {t.durationMin} min{t.language ? ` · ${t.language}` : ''}</p>
+								</div>
+								{#if t.lock === 'paid' && !t.inProgressAttemptId}
+									<span class="small muted">Included</span>
+								{:else}
+									<a class="btn btn-primary start" href={startHref(t)}>{t.inProgressAttemptId ? 'Resume' : 'Start Test'}</a>
+								{/if}
+							</article>
+						{/each}
+					</div>
+				{:else}
+					<div class="card card-pad muted small">No tests in this set for this list yet.</div>
+				{/if}
+			{:else if setGroups.length || loose.length}
+				{#if setGroups.length}
+					<nav class="rows" aria-label="Test sets">
+						{#each setGroups as g (g.id)}
+							<a class="row" href="{href({ view: 'tests', kind })}&set={g.id}" style:--tone="24 90% 58%" style:--wash="22 36% 16%">
+								<span class="mark"><Layers strokeWidth={1.75} /></span>
+								<span class="copy">
+									<span class="name">{g.name}</span>
+									<span class="blurb">{setBlurb(g.tests)}</span>
+								</span>
+								<ChevronRight class="go" />
+							</a>
+						{/each}
+					</nav>
+				{/if}
+				{#if loose.length}
+					<div class="papers">
+						{#each loose as t (t.id)}
+							<article class="paper">
+								<span class="mark mini"><ClipboardList strokeWidth={1.75} /></span>
+								<div class="copy">
+									<p class="name">{t.title}</p>
+									<p class="blurb">{t.questionCount} questions · {t.durationMin} min{t.language ? ` · ${t.language}` : ''}</p>
+								</div>
+								<a class="btn btn-primary start" href={startHref(t)}>{t.inProgressAttemptId ? 'Resume' : 'Start Test'}</a>
+							</article>
+						{/each}
+					</div>
+				{/if}
 			{:else}
 				<div class="card card-pad muted small">No {kind === 'sectional' ? 'sectional' : kind === 'practice' ? 'topic-wise' : 'mock'} tests for {paper.name} yet.</div>
 			{/if}
@@ -270,6 +355,15 @@
 	}
 	.mark.mini { width: 2.3rem; height: 2.3rem; background: hsl(var(--muted)); color: hsl(var(--sun)); }
 	.mark :global(svg) { width: 1.25rem; height: 1.25rem; }
+	.logo {
+		width: 2.6rem;
+		height: 2.6rem;
+		flex-shrink: 0;
+		object-fit: contain;
+		border-radius: 0.8rem;
+		background: #fff;
+	}
+	.logo.hero { width: 3.25rem; height: 3.25rem; border-radius: 1rem; }
 	.copy { flex: 1; min-width: 0; display: grid; gap: 0.12rem; }
 	.name { font-weight: 800; font-size: 0.95rem; line-height: 1.15; }
 	.blurb { font-size: 0.72rem; line-height: 1.3; color: hsl(var(--muted-foreground)); }

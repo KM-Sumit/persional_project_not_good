@@ -1,4 +1,3 @@
-import { continueLearning } from '#lib/features/courses/server/service';
 import { listEnabledBanners } from '#lib/features/engage/server/service';
 import { notesForUser } from '#lib/features/notes/server/service';
 import { examMap } from '#lib/features/taxonomy/server/service';
@@ -14,8 +13,7 @@ const DAY = 86_400_000;
 export const load: PageServerLoad = async (event) => {
 	const u = requireUser(event);
 	const exam = u.targetExamId;
-	const [cont, tests, notes, banners, exams, liveClass, daily, settings] = await Promise.all([
-		continueLearning(u).catch(() => null),
+	const [tests, notes, banners, exams, liveClass, daily, settings] = await Promise.all([
 		catalog(u.id).catch(() => []),
 		notesForUser(u, exam ? { examId: exam } : {}).catch(() => []),
 		listEnabledBanners().catch(() => []),
@@ -43,7 +41,6 @@ export const load: PageServerLoad = async (event) => {
 		inProgress,
 		nextLive,
 		nextLiveSoon: !!nextLive?.startsAt && Date.parse(nextLive.startsAt) - now < DAY && Date.parse(nextLive.startsAt) > now,
-		cont,
 		openNow,
 		notes: notes.slice(0, 4),
 		banners,

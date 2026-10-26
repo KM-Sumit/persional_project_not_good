@@ -19,6 +19,7 @@ export const load: PageServerLoad = async ({ parent }) => {
 			slug: c.slug,
 			name: c.name,
 			description: c.description,
+			logoFileId: c.logoFileId,
 			exams: c.exams.map((e) => ({ id: e.id, name: e.name, slug: e.slug, description: e.description }))
 		})),
 		targetExamId: profile?.targetExamId ?? null,
